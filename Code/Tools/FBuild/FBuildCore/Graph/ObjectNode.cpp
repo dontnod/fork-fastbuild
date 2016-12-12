@@ -2044,6 +2044,15 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
             return;
         }
 
+// DNE BEGIN
+        // Retry builds if DLL not found on machine
+        if ( (uint32_t)result == 0xC0000135 )
+        {
+            job->OnSystemError();
+            return;
+        }
+// DNE END
+
         // If DLLs are not correctly sync'd, add an extra message to help the user
         if ( (uint32_t)result == 0xC000007B ) // STATUS_INVALID_IMAGE_FORMAT
         {
