@@ -2084,6 +2084,14 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
                 }
             }
 
+// DNE BEGIN
+            if ( stdOut && strstr( stdOut, "C1060:" ) ) // compiler is out of heap space
+            {
+                job->OnSystemError();
+                return;
+            }
+// DNE END
+
             // Error messages above also contains this text
             // (We check for this message additionally to handle other error codes
             //  that may not have been observed yet)
