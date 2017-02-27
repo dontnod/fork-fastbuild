@@ -25,7 +25,7 @@ BFFFile::BFFFile( const char * fileName, const AString & fileContents )
     , m_FileContents( fileContents )
     , m_Once( false )
 {
-    m_Hash = xxHash::Calc64( m_FileContents );
+    m_Hash = xxHash::Calc64( m_FileContents ); // Note (DKO): we don't need to change this to a call to FBuild::Hash64 (no path involved here)
 }
 
 // DESTRUCTOR
@@ -68,7 +68,7 @@ bool BFFFile::Load( const AString & fileName, const BFFToken * token )
     m_FileContents = Move( fileContents );
     m_FileName = fileName;
     m_ModTime = FileIO::GetFileLastWriteTime( fileName );
-    m_Hash = xxHash::Calc64( m_FileContents );
+    m_Hash = xxHash::Calc64( m_FileContents ); // Note (DKO): we don't need to change this to a call to FBuild::Hash64 (no path involved here)
 
     return true;
 }

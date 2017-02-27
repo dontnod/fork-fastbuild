@@ -708,7 +708,10 @@ bool Process::ReadAllData( AutoPtr< char > & outMem, uint32_t * outMemSize,
             // TODO:B look at a new container type (like a linked list of 1mb buffers) to avoid the wasteage here
             // The caller has to take a copy to avoid the overhead if they want to hang onto the data
             // grow buffer in at least 16MB chunks, to prevent future reallocations
-            uint32_t newBufferSize = Math::Max< uint32_t >( sizeSoFar + bytesAvail, bufferSize + ( 16 * MEGABYTE ) );
+            // NOTE (DKO): reduced to 2MB to avoid wasting too much memory. With 32 cores, this used to consume
+            // at least 32 * 2 * 16MB = 1GB from ObjectNode::CompileHelper::SpawnCompiler via ReadAllData
+            // for instance
+            uint32_t newBufferSize = Math::Max< uint32_t >( sizeSoFar + bytesAvail, bufferSize + ( 2 * MEGABYTE ) );
             char * newBuffer = (char *)ALLOC( newBufferSize + 1 ); // +1 so we can always add a null char
             if ( buffer.Get() )
             {
