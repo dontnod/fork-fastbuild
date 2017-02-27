@@ -4,6 +4,7 @@
 // Includes
 //------------------------------------------------------------------------------
 #include "ToolManifest.h"
+#include "Tools/FBuild/FBuildCore/FBuild.h"
 
 // Core
 #include "Core/Containers/AutoPtr.h"
@@ -140,7 +141,7 @@ bool ToolManifestFile::DoBuild()
     m_UncompressedContentSize = uncompressedContentSize;
 
     // Store the hash and timestamp
-    m_Hash = xxHash::Calc32( uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
+    m_Hash = FBuild::Hash32( uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
     m_TimeStamp = FileIO::GetFileLastWriteTime( m_Name );
 
     // Compress and keep the data if it might be useful
@@ -213,10 +214,10 @@ bool ToolManifest::DoBuild( const Dependencies & dependencies )
         // file name & sub-path (relative to remote folder)
         AStackString<> relativePath;
         GetRelativePath( m_MainExecutableRootPath, f.GetName(), relativePath );
-        *pos = xxHash::Calc32( relativePath );
+        *pos = FBuild::Hash32( relativePath );
         ++pos;
     }
-    m_ToolId = xxHash::Calc64( mem, memSize );
+    m_ToolId = FBuild::Hash64( mem, memSize );
     FREE( mem );
 
     // update time stamp (most recent file in manifest)
@@ -334,7 +335,7 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
         {
             continue; // problem reading file
         }
-        if( xxHash::Calc32( mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].GetHash() )
+        if( FBuild::Hash32( mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].GetHash() )
         {
             continue; // file contents unexpected
         }

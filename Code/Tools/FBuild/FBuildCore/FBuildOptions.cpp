@@ -4,6 +4,7 @@
 // Includes
 //------------------------------------------------------------------------------
 // FBuildCore
+#include "FBuild.h"
 #include "FBuildOptions.h"
 #include "Tools/FBuild/FBuildCore/FBuildVersion.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
