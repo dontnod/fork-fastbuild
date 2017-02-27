@@ -66,6 +66,9 @@ public:
     bool GenerateDotGraph( const Array< AString > & targets, const bool fullGraph ) const;
     bool GenerateCompilationDatabase( const Array< AString > & targets ) const;
 
+    const AString& GetRootPath() const { return m_RootPath; }
+    void SetRootPath( const AString& rootPath ) { m_RootPath = rootPath; }
+
     class EnvironmentVarAndHash
     {
     public:
@@ -110,6 +113,13 @@ public:
     bool CacheOutputInfo() const;
     bool CacheTrim() const;
 
+    // root path agnostic hash functions
+    static uint32_t Hash32( const AString & rootPath, const void * buffer, size_t len );
+    static uint64_t Hash64( const AString & rootPath, const void * buffer, size_t len );
+
+    inline static uint32_t Hash32( const AString & rootPath, const AString & string ) { return Hash32( rootPath, string.Get(), string.GetLength() ); }
+    inline static uint64_t Hash64( const AString & rootPath, const AString & string ) { return Hash64( rootPath, string.Get(), string.GetLength() ); }
+
 protected:
     bool GetTargets( const Array< AString > & targets, Dependencies & outDeps ) const;
 
@@ -124,7 +134,7 @@ protected:
 
     AString m_DependencyGraphFile;
     ICache * m_Cache;
-
+    AString m_RootPath;
     Timer m_Timer;
     float m_LastProgressOutputTime;
     float m_LastProgressCalcTime;

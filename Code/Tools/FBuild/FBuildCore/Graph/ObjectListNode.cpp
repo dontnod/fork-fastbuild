@@ -16,6 +16,8 @@
 #include "Tools/FBuild/FBuildCore/Graph/ObjectNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/UnityNode.h"
 #include "Tools/FBuild/FBuildCore/Helpers/Args.h"
+#include "Tools/FBuild/FBuildCore/Helpers/ToolManifest.h"
+#include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFVariable.h"
 
 // Core
@@ -545,7 +547,7 @@ ObjectListNode::~ObjectListNode() = default;
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult ObjectListNode::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult ObjectListNode::DoBuild( Job * job )
 {
     // Generate stamp
     if ( m_DynamicDependencies.IsEmpty() )
@@ -561,7 +563,13 @@ ObjectListNode::~ObjectListNode() = default;
             ASSERT( on->GetStamp() );
             stamps.Append( on->GetStamp() );
         }
-        m_Stamp = xxHash::Calc64( &stamps[0], ( stamps.GetSize() * sizeof(uint64_t) ) );
+
+		// PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+		const AString& rootPath = (job->IsLocal()
+			? FBuild::Get().GetRootPath()
+			: job->GetToolManifest()->GetRemoteBffRootPath());
+
+        m_Stamp = FBuild::Hash64(rootPath, &stamps[0], ( stamps.GetSize() * sizeof(uint64_t) ) );
     }
 
     return NODE_RESULT_OK;

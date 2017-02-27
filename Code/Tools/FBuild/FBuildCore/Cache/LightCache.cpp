@@ -9,6 +9,7 @@
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectNode.h"
 #include "Tools/FBuild/FBuildCore/Helpers/ProjectGeneratorBase.h"
+#include "Tools/FBuild/FBuildCore/FBuild.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
 
 // Core
@@ -322,7 +323,7 @@ bool LightCache::Hash( ObjectNode * node,
         hashes.Append( file->m_ContentHash );
         outIncludes.Append( file->m_FileName );
     }
-    outSourceHash = xxHash::Calc64( hashes.Begin(), hashes.GetSize() * sizeof( uint64_t ) );
+    outSourceHash = FBuild::Hash64( FBuild::Get().GetRootPath()/* PQU: always performed on localhost */, hashes.Begin(), hashes.GetSize() * sizeof( uint64_t ) );
 
     return true;
 }
@@ -356,7 +357,7 @@ void LightCache::Parse( IncludedFile * file, FileStream & f )
 
 
     // Store hash of file
-    file->m_ContentHash = xxHash::Calc64( fileContents );
+    file->m_ContentHash = FBuild::Hash64( FBuild::Get().GetRootPath()/* PQU: always performed on localhost */, fileContents );
 
     const char * pos = fileContents.Get();
     for (;;)
@@ -849,7 +850,7 @@ const IncludedFile * LightCache::ProcessIncludeFromIncludePath( const AString & 
 //------------------------------------------------------------------------------
 const IncludedFile * LightCache::FileExists( const AString & fileName )
 {
-    const uint64_t fileNameHash = xxHash::Calc64( fileName );
+    const uint64_t fileNameHash = FBuild::Hash64( FBuild::Get().GetRootPath()/* PQU: always performed on localhost */, fileName );
     const uint64_t bucketIndex = LIGHTCACHE_HASH_TO_BUCKET( fileNameHash );
     IncludedFileBucket & bucket = g_AllIncludedFiles[ bucketIndex ];
     // Retrieve from shared cache
