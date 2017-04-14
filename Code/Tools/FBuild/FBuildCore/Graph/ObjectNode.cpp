@@ -2180,6 +2180,14 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
             }
 
 // DNE BEGIN
+            // Internal compiler error is a system error; usually caused by
+            // hardware issues.
+            if ( stdOut && strstr( stdOut, "C1001" ) )
+            {
+                job->OnSystemError();
+                return;
+            }
+
             if ( stdOut && strstr( stdOut, "C1060:" ) ) // compiler is out of heap space
             {
                 job->OnSystemError();
