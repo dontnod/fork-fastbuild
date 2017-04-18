@@ -141,7 +141,7 @@
             data->safeToFree = true;
         }
 
-        ASSERT( NetworkStartupHelper::IsStarted() ); // ensure network is up
+        //ASSERT( NetworkStartupHelper::IsStarted() ); // ensure network is up
 
         // perform lookup
         {
