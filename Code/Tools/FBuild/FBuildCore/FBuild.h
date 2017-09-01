@@ -18,6 +18,7 @@
 //------------------------------------------------------------------------------
 class BFFMacros;
 class Client;
+class Dependencies;
 class FileStream;
 class ICache;
 class IOStream;
@@ -63,6 +64,7 @@ public:
     inline uint32_t     GetEnvironmentStringSize() const        { return m_EnvironmentStringSize; }
 
     void DisplayTargetList() const;
+    bool DisplayDependencyDB( const Array< AString > & targets ) const;
 
     class EnvironmentVarAndHash
     {
@@ -91,13 +93,17 @@ public:
     FBuildStats & GetStatsMutable()         { return m_BuildStats; }
 
     // attempt to cleanly stop the build
-    static inline void AbortBuild() { s_StopBuild = true; }
+    static        void AbortBuild();
     static        void OnBuildError();
     static inline bool GetStopBuild() { return s_StopBuild; }
 
     inline ICache * GetCache() const { return m_Cache; }
 
+    static bool GetTempDir( AString & outTempDir );
+
 private:
+    bool GetTargets( const Array< AString > & targets, Dependencies & outDeps ) const;
+
     void UpdateBuildStatus( const Node * node );
 
     static bool s_StopBuild;

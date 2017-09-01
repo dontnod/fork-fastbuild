@@ -200,27 +200,34 @@ ObjectNode::~ObjectNode()
 //------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult ObjectNode::DoBuild( Job * job )
 {
-    // delete previous file
-    if ( FileIO::FileExists( GetName().Get() ) )
+    // Delete previous file(s) if doing a clean build
+    if ( FBuild::Get().GetOptions().m_ForceCleanBuild )
     {
-        if ( FileIO::FileDelete( GetName().Get() ) == false )
+        if ( FileIO::FileExists( GetName().Get() ) )
         {
-            FLOG_ERROR( "Failed to delete file before build '%s'", GetName().Get() );
-            return NODE_RESULT_FAILED;
-        }
-    }
-    if ( GetFlag( FLAG_MSVC ) && GetFlag( FLAG_CREATING_PCH ) )
-    {
-        if ( FileIO::FileExists( m_PCHObjectFileName.Get() ) )
-        {
-            if ( FileIO::FileDelete( m_PCHObjectFileName.Get() ) == false )
+            if ( FileIO::FileDelete( GetName().Get() ) == false )
             {
-                FLOG_ERROR( "Failed to delete file before build '%s'", m_PCHObjectFileName.Get() );
+                FLOG_ERROR( "Failed to delete file before build '%s'", GetName().Get() );
                 return NODE_RESULT_FAILED;
             }
         }
+        if ( GetFlag( FLAG_MSVC ) && GetFlag( FLAG_CREATING_PCH ) )
+        {
+            if ( FileIO::FileExists( m_PCHObjectFileName.Get() ) )
+            {
+                if ( FileIO::FileDelete( m_PCHObjectFileName.Get() ) == false )
+                {
+                    FLOG_ERROR( "Failed to delete file before build '%s'", m_PCHObjectFileName.Get() );
+                    return NODE_RESULT_FAILED;
+                }
+            }
+        }
+    }
 
-        m_PCHCacheKey = 0; // Will be set correctly if we end up using the cache
+    // Reset PCH cache key - will be set correctly if we end up using the cache
+    if ( GetFlag( FLAG_MSVC ) && GetFlag( FLAG_CREATING_PCH ) )
+    {
+        m_PCHCacheKey = 0;
     }
 
     // using deoptimization?
@@ -319,9 +326,11 @@ ObjectNode::~ObjectNode()
     }
 
     // Handle MSCL warnings if not already a failure
-    if ( ch.GetResult() == 0 )
+    // If "warnings as errors" is enabled (/WX) we don't need to check
+    // (since compilation will fail anyway, and the output will be shown)
+    if ( ( ch.GetResult() == 0 ) && !GetFlag( FLAG_WARNINGS_AS_ERRORS_MSVC ) )
     {
-        HandleWarningsMSCL( job, ch.GetOut().Get(), ch.GetOutSize() );
+        HandleWarningsMSVC( job, GetName(), ch.GetOut().Get(), ch.GetOutSize() );
     }
 
     const char *output = nullptr;
@@ -1017,51 +1026,6 @@ const char * ObjectNode::GetObjExtension() const
         #endif
     }
     return m_CompilerOutputExtension.Get();
-}
-
-// HandleWarningsMSCL
-//------------------------------------------------------------------------------
-void ObjectNode::HandleWarningsMSCL( Job* job, const char * data, uint32_t dataSize ) const
-{
-    // If "warnings as errors" is enabled (/WX) we don't need to check
-    // (since compilation will fail anyway, and the output will be shown)
-    if ( GetFlag( FLAG_WARNINGS_AS_ERRORS_MSVC ) )
-    {
-        return;
-    }
-
-    if ( ( data == nullptr ) || ( dataSize == 0 ) )
-    {
-        return;
-    }
-
-    // Are there any warnings? (string is ok even in non-English)
-    if ( strstr( data, ": warning " ) )
-    {
-        const bool treatAsWarnings = true;
-        DumpOutput( job, data, dataSize, GetName(), treatAsWarnings );
-    }
-}
-
-// DumpOutput
-//------------------------------------------------------------------------------
-/*static*/ void ObjectNode::DumpOutput( Job * job, const char * data, uint32_t dataSize, const AString & name, bool treatAsWarnings )
-{
-    if ( ( data != nullptr ) && ( dataSize > 0 ) )
-    {
-        Array< AString > exclusions( 2, false );
-        exclusions.Append( AString( "Note: including file:" ) );
-        exclusions.Append( AString( "#line" ) );
-
-        AStackString<> msg;
-        msg.Format( "%s: %s\n", treatAsWarnings ? "WARNING" : "PROBLEM", name.Get() );
-
-        AutoPtr< char > mem( (char *)Alloc( dataSize + msg.GetLength() ) );
-        memcpy( mem.Get(), msg.Get(), msg.GetLength() );
-        memcpy( mem.Get() + msg.GetLength(), data, dataSize );
-
-        Node::DumpOutput( job, mem.Get(), dataSize + msg.GetLength(), &exclusions );
-    }
 }
 
 // GetCacheName
@@ -1795,7 +1759,9 @@ bool ObjectNode::BuildPreprocessedOutput( const Args & fullArgs, Job * job, bool
         // only output errors in failure case
         // (as preprocessed output goes to stdout, normal logging is pushed to
         // stderr, and we don't want to see that unless there is a problem)
-        if ( ch.GetResult() != 0 )
+        // NOTE: Output is omitted in case the compiler has been aborted because we don't care about the errors
+        // caused by the manual process abortion (process killed)
+        if ( ( ch.GetResult() != 0 ) && !ch.HasAborted() )
         {
             DumpOutput( job, ch.GetErr().Get(), ch.GetErrSize(), GetName() );
         }
@@ -2051,9 +2017,9 @@ bool ObjectNode::BuildFinalOutput( Job * job, const Args & fullArgs ) const
     else
     {
         // Handle MSCL warnings if not already a failure
-        if ( IsMSVC() && ( ch.GetResult() == 0 ) )
+        if ( IsMSVC() && ( ch.GetResult() == 0 ) && !GetFlag( FLAG_WARNINGS_AS_ERRORS_MSVC ))
         {
-            HandleWarningsMSCL( job, ch.GetOut().Get(), ch.GetOutSize() );
+            HandleWarningsMSVC( job, GetName(), ch.GetOut().Get(), ch.GetOutSize() );
         }
     }
 
@@ -2103,8 +2069,13 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
     m_Process.ReadAllData( m_Out, &m_OutSize, m_Err, &m_ErrSize );
 
     // Get result
-    ASSERT( !m_Process.IsRunning() );
     m_Result = m_Process.WaitForExit();
+    // Process are aborted only when the master process has been killed or there is a failed build and fastcancel is active
+    // This is to be really sure that the result code is not 0 and the job is not retried when the process is aborted(killed).
+    if ( m_Process.HasAborted() )
+    {
+        return false;
+    }
 
     // Handle special types of failures
     HandleSystemFailures( job, m_Result, m_Out.Get(), m_Err.Get() );

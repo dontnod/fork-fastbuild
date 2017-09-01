@@ -540,6 +540,69 @@ void NodeGraph::Save( IOStream & stream, const char* nodeGraphDBFile ) const
     }
 }
 
+// Display
+//------------------------------------------------------------------------------
+void NodeGraph::Display( const Dependencies & deps ) const
+{
+    AString buffer( 10 * 1024 * 1024 );
+
+    const size_t numNodes = m_AllNodes.GetSize();
+    Array< bool > visited( numNodes, false );
+    visited.SetSize( numNodes );
+    memset( visited.Begin(), 0, numNodes );
+    for ( const Dependency & dep : deps )
+    {
+        DisplayRecurse( dep.GetNode(), visited, 0, buffer );
+    }
+
+    OUTPUT("%s", buffer.Get());
+}
+
+// DisplayRecurse
+//------------------------------------------------------------------------------
+/*static*/ void NodeGraph::DisplayRecurse( Node * node, Array< bool > & visited, uint32_t depth, AString& outBuffer )
+{
+    // Print this even if it has been visited before so the edge is visible
+    outBuffer.AppendFormat( "%*s%s %s\n", depth * 4, "", node->GetTypeName(), node->GetName().Get() );
+
+    // Don't descend into already visited nodes
+    uint32_t nodeIndex = node->GetIndex();
+    ASSERT( nodeIndex != INVALID_NODE_INDEX );
+    if ( visited[ nodeIndex ] )
+    {
+        if ( node->GetPreBuildDependencies().GetSize() || 
+             node->GetStaticDependencies().GetSize() || 
+             node->GetDynamicDependencies().GetSize() )
+        {
+            outBuffer.AppendFormat( "%*s...\n", ( depth + 1 ) * 4, "" );
+        }
+        return;
+    }
+    visited[ nodeIndex ] = true;
+
+    // Dependencies
+    DisplayRecurse( "PreBuild", node->GetPreBuildDependencies(), visited, depth, outBuffer );
+    DisplayRecurse( "Static", node->GetStaticDependencies(), visited, depth, outBuffer );
+    DisplayRecurse( "Dynamic", node->GetDynamicDependencies(), visited, depth, outBuffer );
+}
+
+// DisplayRecurse
+//------------------------------------------------------------------------------
+/*static*/ void NodeGraph::DisplayRecurse( const char * title, const Dependencies & dependencies, Array< bool > & visited, uint32_t depth, AString & outBuffer )
+{
+    const Dependency * const end = dependencies.End();
+    const Dependency * it = dependencies.Begin();
+    if ( it != end )
+    {
+        outBuffer.AppendFormat( "%*s%s\n", depth * 4 + 2, "", title );
+    }
+    for ( ; it != end; ++it )
+    {
+        Node * n = it->GetNode();
+        DisplayRecurse( n, visited, depth + 1, outBuffer );
+    }
+}
+
 // FindNode (AString &)
 //------------------------------------------------------------------------------
 Node * NodeGraph::FindNode( const AString & nodeName ) const
