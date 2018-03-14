@@ -66,7 +66,8 @@ bool LibraryNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, c
 
     // .LibrarianOptions
     {
-        if ( m_LibrarianOptions.Find( "%1" ) == nullptr )
+        // Working around the response file already including the input file and causing warning "LNK4042: object specified more than once" with MSVC
+        if (m_LibrarianOptions.Find("%1") == nullptr && m_LibrarianOptions.Find("@") == nullptr)
         {
             Error::Error_1106_MissingRequiredToken( iter, function, ".LibrarianOptions", "%1" );
             return false;
