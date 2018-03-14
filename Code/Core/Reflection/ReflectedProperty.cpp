@@ -44,6 +44,19 @@ ReflectedProperty::ReflectedProperty( const char * name, uint32_t offset, Proper
     m_MetaDataChain = nullptr;
 }
 
+// DESTRUCTOR
+//------------------------------------------------------------------------------
+ReflectedProperty::~ReflectedProperty()
+{
+    const IMetaData * m = m_MetaDataChain;
+    while ( m )
+    {
+        const IMetaData * next = m->GetNext();
+        FDELETE m;
+        m = next;
+    }
+}
+
 // GetPropertySize
 //------------------------------------------------------------------------------
 size_t ReflectedProperty::GetPropertySize() const
@@ -185,7 +198,7 @@ GETSET_PROPERTY_ARRAY( AString )
             {
                 uint64_t u;
                 GetProperty( object, &u );
-                buffer.Format( "%llu", u );
+                buffer.Format( "%" PRIu64, u );
                 return;
             }
             case PT_INT8:
@@ -213,7 +226,7 @@ GETSET_PROPERTY_ARRAY( AString )
             {
                 int64_t i;
                 GetProperty( object, &i );
-                buffer.Format( "%lld", i );
+                buffer.Format( "%" PRIi64, i );
                 return;
             }
             case PT_BOOL:

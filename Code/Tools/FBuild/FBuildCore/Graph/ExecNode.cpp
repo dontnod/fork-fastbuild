@@ -7,9 +7,11 @@
 
 #include "ExecNode.h"
 
+#include "Tools/FBuild/FBuildCore/BFF/Functions/Function.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
+#include "Tools/FBuild/FBuildCore/Graph/DirectoryListNode.h"
 
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
@@ -17,31 +19,86 @@
 #include "Core/Strings/AStackString.h"
 #include "Core/Process/Process.h"
 
+// Reflection
+//------------------------------------------------------------------------------
+REFLECT_NODE_BEGIN( ExecNode, Node, MetaName( "ExecOutput" ) + MetaFile() )
+    REFLECT(        m_ExecExecutable,           "ExecExecutable",           MetaFile() )
+    REFLECT_ARRAY(  m_ExecInput,                "ExecInput",                MetaOptional() + MetaFile() )
+    REFLECT_ARRAY(  m_ExecInputPath,            "ExecInputPath",            MetaOptional() + MetaPath() )
+    REFLECT_ARRAY(  m_ExecInputPattern,         "ExecInputPattern",         MetaOptional() )
+    REFLECT(        m_ExecInputPathRecurse,     "ExecInputPathRecurse",     MetaOptional() )
+    REFLECT_ARRAY(  m_ExecInputExcludePath,     "ExecInputExcludePath",     MetaOptional() + MetaPath() )
+    REFLECT_ARRAY(  m_ExecInputExcludedFiles,   "ExecInputExcludedFiles",   MetaOptional() + MetaFile( true ) )
+    REFLECT_ARRAY(  m_ExecInputExcludePattern,  "ExecInputExcludePattern",  MetaOptional() )
+    REFLECT(        m_ExecArguments,            "ExecArguments",            MetaOptional() )
+    REFLECT(        m_ExecWorkingDir,           "ExecWorkingDir",           MetaOptional() + MetaPath() )
+    REFLECT(        m_ExecReturnCode,           "ExecReturnCode",           MetaOptional() )
+    REFLECT(        m_ExecUseStdOutAsOutput,    "ExecUseStdOutAsOutput",    MetaOptional() )
+    REFLECT_ARRAY(  m_PreBuildDependencyNames,  "PreBuildDependencies",     MetaOptional() + MetaFile() + MetaAllowNonFile() )
+REFLECT_END( ExecNode )
+
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
-ExecNode::ExecNode( const AString & dstFileName,
-                        const Dependencies & inputFiles,
-                        FileNode * executable,
-                        const AString & arguments,
-                        const AString & workingDir,
-                        int32_t expectedReturnCode,
-                        const Dependencies & preBuildDependencies,
-                        bool useStdOutAsOutput )
-: FileNode( dstFileName, Node::FLAG_NONE )
-, m_InputFiles( inputFiles )
-, m_Executable( executable )
-, m_Arguments( arguments )
-, m_WorkingDir( workingDir )
-, m_ExpectedReturnCode( expectedReturnCode )
-, m_UseStdOutAsOutput( useStdOutAsOutput )
+ExecNode::ExecNode()
+    : FileNode( AString::GetEmpty(), Node::FLAG_NONE )
+    , m_ExecReturnCode( 0 )
+    , m_ExecUseStdOutAsOutput( false )
+    , m_ExecInputPathRecurse( true )
 {
-    ASSERT( executable );
-    m_StaticDependencies.SetCapacity( m_InputFiles.GetSize() + 1 );
-    m_StaticDependencies.Append(m_InputFiles);
-    m_StaticDependencies.Append( Dependency( executable ) );
     m_Type = EXEC_NODE;
 
-    m_PreBuildDependencies = preBuildDependencies;
+    m_ExecInputPattern.Append( AStackString<>( "*.*" ) );
+}
+
+// Initialize
+//------------------------------------------------------------------------------
+bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
+{
+    // .PreBuildDependencies
+    if ( !InitializePreBuildDependencies( nodeGraph, iter, function, m_PreBuildDependencyNames ) )
+    {
+        return false; // InitializePreBuildDependencies will have emitted an error
+    }
+
+    // .ExecExecutable
+    Dependencies executable;
+    if ( !function->GetFileNode( nodeGraph, iter, m_ExecExecutable, "ExecExecutable", executable ) )
+    {
+        return false; // GetFileNode will have emitted an error
+    }
+    ASSERT( executable.GetSize() == 1 ); // Should only be possible to be one
+
+    // .ExecInput
+    Dependencies execInputFiles;
+    if ( !function->GetFileNodes( nodeGraph, iter, m_ExecInput, "ExecInput", execInputFiles ) )
+    {
+        return false; // GetFileNodes will have emitted an error
+    }
+
+    // .CompilerInputPath
+    Dependencies execInputPaths;
+    if ( !function->GetDirectoryListNodeList( nodeGraph,
+                                              iter,
+                                              m_ExecInputPath,
+                                              m_ExecInputExcludePath,
+                                              m_ExecInputExcludedFiles,
+                                              m_ExecInputExcludePattern,
+                                              m_ExecInputPathRecurse,
+                                              &m_ExecInputPattern,
+                                              "ExecInputPath",
+                                              execInputPaths ) )
+    {
+        return false; // GetDirectoryListNodeList will have emitted an error
+    }
+    ASSERT( execInputPaths.GetSize() == m_ExecInputPath.GetSize() ); // No need to store count since they should be the same
+
+    // Store Static Dependencies
+    m_StaticDependencies.SetCapacity( 1 + execInputFiles.GetSize() + execInputPaths.GetSize() );
+    m_StaticDependencies.Append( executable );
+    m_StaticDependencies.Append( execInputFiles );
+    m_StaticDependencies.Append( execInputPaths );
+
+    return true;
 }
 
 // DESTRUCTOR
@@ -53,7 +110,7 @@ ExecNode::~ExecNode() = default;
 /*virtual*/ Node::BuildResult ExecNode::DoBuild( Job * job )
 {
     // If the workingDir is empty, use the current dir for the process
-    const char * workingDir = m_WorkingDir.IsEmpty() ? nullptr : m_WorkingDir.Get();
+    const char * workingDir = m_ExecWorkingDir.IsEmpty() ? nullptr : m_ExecWorkingDir.Get();
 
     // Format compiler args string
     AStackString< 4 * KILOBYTE > fullArgs;
@@ -62,14 +119,19 @@ ExecNode::~ExecNode() = default;
     EmitCompilationMessage( fullArgs );
 
     // spawn the process
-    Process p;
-    bool spawnOK = p.Spawn( m_Executable->GetName().Get(),
+    Process p( FBuild::Get().GetAbortBuildPointer() );
+    bool spawnOK = p.Spawn( GetExecutable()->GetName().Get(),
                             fullArgs.Get(),
                             workingDir,
                             FBuild::Get().GetEnvironmentString() );
 
     if ( !spawnOK )
     {
+        if ( p.HasAborted() )
+        {
+            return NODE_RESULT_FAILED;
+        }
+
         FLOG_ERROR( "Failed to spawn process for '%s'", GetName().Get() );
         return NODE_RESULT_FAILED;
     }
@@ -85,13 +147,11 @@ ExecNode::~ExecNode() = default;
     int result = p.WaitForExit();
     if ( p.HasAborted() )
     {
-        // Process are aborted only when the master process has been killed and fastcancel is active.
-        // This is to be really sure that the result code is not a success
-        result = m_ExpectedReturnCode + 1;
+        return NODE_RESULT_FAILED;
     }
 
     // did the executable fail?
-    if ( result != m_ExpectedReturnCode )
+    if ( result != m_ExecReturnCode )
     {
         // something went wrong, print details
         Node::DumpOutput( job, memOut.Get(), memOutSize );
@@ -101,7 +161,7 @@ ExecNode::~ExecNode() = default;
         return NODE_RESULT_FAILED;
     }
 
-    if ( m_UseStdOutAsOutput == true )
+    if ( m_ExecUseStdOutAsOutput == true )
     {
         FileStream f;
         f.Open( m_Name.Get(), FileStream::WRITE_ONLY );
@@ -122,29 +182,16 @@ ExecNode::~ExecNode() = default;
 //------------------------------------------------------------------------------
 /*static*/ Node * ExecNode::Load( NodeGraph & nodeGraph, IOStream & stream )
 {
-    NODE_LOAD( AStackString<>,  fileName );
-    NODE_LOAD_DEPS( 0,          inputFiles );
-    NODE_LOAD( AStackString<>,  executable );
-    NODE_LOAD( AStackString<>,  arguments );
-    NODE_LOAD( AStackString<>,  workingDir );
-    NODE_LOAD( int32_t,         expectedReturnCode );
-    NODE_LOAD_DEPS( 0,          preBuildDependencies );
-    NODE_LOAD( bool,            useStdOutAsOutput);
+    NODE_LOAD( AStackString<>, name );
 
-    Node * execNode = nodeGraph.FindNode( executable );
-    ASSERT( execNode ); // load/save logic should ensure the src was saved first
-    ASSERT( execNode->IsAFile() );
-    ExecNode * n = nodeGraph.CreateExecNode( fileName,
-                                  inputFiles,
-                                  (FileNode *)execNode,
-                                  arguments,
-                                  workingDir,
-                                  expectedReturnCode,
-                                  preBuildDependencies,
-                                  useStdOutAsOutput );
-    ASSERT( n );
+    ExecNode * node = nodeGraph.CreateExecNode( name );
 
-    return n;
+    if ( node->Deserialize( nodeGraph, stream ) == false )
+    {
+        return nullptr;
+    }
+
+    return node;
 }
 
 // Save
@@ -152,13 +199,7 @@ ExecNode::~ExecNode() = default;
 /*virtual*/ void ExecNode::Save( IOStream & stream ) const
 {
     NODE_SAVE( m_Name );
-    NODE_SAVE_DEPS( m_InputFiles );
-    NODE_SAVE( m_Executable->GetName() );
-    NODE_SAVE( m_Arguments );
-    NODE_SAVE( m_WorkingDir );
-    NODE_SAVE( m_ExpectedReturnCode );
-    NODE_SAVE_DEPS( m_PreBuildDependencies );
-    NODE_SAVE( m_UseStdOutAsOutput );
+    Node::Serialize( stream );
 }
 
 // EmitCompilationMessage
@@ -176,10 +217,10 @@ void ExecNode::EmitCompilationMessage( const AString & args ) const
     {
         AStackString< 1024 > verboseOutput;
         verboseOutput.Format( "%s %s\nWorkingDir: %s\nExpectedReturnCode: %i\n",
-                              m_Executable->GetName().Get(),
+                              GetExecutable()->GetName().Get(),
                               args.Get(),
-                              m_WorkingDir.Get(),
-                              m_ExpectedReturnCode );
+                              m_ExecWorkingDir.Get(),
+                              m_ExecReturnCode );
         output += verboseOutput;
     }
 
@@ -193,7 +234,7 @@ void ExecNode::GetFullArgs(AString & fullArgs) const
 {
     // split into tokens
     Array< AString > tokens(1024, true);
-    m_Arguments.Tokenize(tokens);
+    m_ExecArguments.Tokenize(tokens);
 
     AStackString<> quote("\"");
 
@@ -251,18 +292,37 @@ void ExecNode::GetFullArgs(AString & fullArgs) const
 //------------------------------------------------------------------------------
 void ExecNode::GetInputFiles(AString & fullArgs, const AString & pre, const AString & post) const
 {
-    bool first = true;
-    const Dependency * const end = m_InputFiles.End();
-    for (const Dependency * it = m_InputFiles.Begin();
-        it != end;
-        ++it)
+    bool first = true; // Handle comma separation
+    for ( size_t i=1; i < m_StaticDependencies.GetSize(); ++i ) // Note: Skip first dep (exectuable)
     {
-        if (!first)
+        const Dependency & dep = m_StaticDependencies[ i ];
+        const Node * n = dep.GetNode();
+
+        // Handle directory lists
+        if ( n->GetType() == Node::DIRECTORY_LIST_NODE )
+        {
+            DirectoryListNode * dln = n->CastTo< DirectoryListNode >();
+            const Array< FileIO::FileInfo > & files = dln->GetFiles();
+            for ( const FileIO::FileInfo & file : files )
+            {
+                if ( !first )
+                {
+                    fullArgs += ' ';
+                }
+                fullArgs += pre;
+                fullArgs += file.m_Name;
+                fullArgs += post;
+                first = false;
+            }
+            continue;
+        }
+
+        if ( !first )
         {
             fullArgs += ' ';
         }
         fullArgs += pre;
-        fullArgs += it->GetNode()->GetName();
+        fullArgs += dep.GetNode()->GetName();
         fullArgs += post;
         first = false;
     }

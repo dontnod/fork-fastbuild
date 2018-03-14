@@ -93,7 +93,7 @@ const AString & VSProjectGenerator::GenerateVCXProj( const AString & projectFile
                                                      const Array< VSProjectConfig > & configs,
                                                      const Array< VSProjectFileType > & fileTypes )
 {
-    ASSERT( !m_ProjectName.IsEmpty() ); // needed for valid guid generation
+    ASSERT( !m_ProjectGuid.IsEmpty() );
 
     // preallocate to avoid re-allocations
     m_Tmp.SetReserved( MEGABYTE );
@@ -188,21 +188,10 @@ const AString & VSProjectGenerator::GenerateVCXProj( const AString & projectFile
         Write("  </ItemGroup>\n" );
     }
 
-    // GUID : use user provided one if available, otherwise generate one deterministically
-    AStackString<> guid;
-    if ( m_ProjectGuid.IsEmpty() )
-    {
-        FormatDeterministicProjectGUID( guid, m_ProjectName );
-    }
-    else
-    {
-        guid = m_ProjectGuid;
-    }
-
     // Globals
     Write( "  <PropertyGroup Label=\"Globals\">\n" );
     WritePGItem( "RootNamespace", m_RootNamespace );
-    WritePGItem( "ProjectGuid", guid );
+    WritePGItem( "ProjectGuid", m_ProjectGuid );
     WritePGItem( "DefaultLanguage", m_DefaultLanguage );
     WritePGItem( "Keyword", AStackString<>( "MakeFileProj" ) );
     if ( m_ProjectSccEntrySAK )
@@ -306,6 +295,9 @@ const AString & VSProjectGenerator::GenerateVCXProj( const AString & projectFile
                         AStackString<> fullIncludePath;
                         NodeGraph::CleanPath( include, fullIncludePath ); // Expand to full path
                         GetProjectRelativePath( projectBasePath, fullIncludePath, include );
+                        #if !defined( __WINDOWS__ )
+                            include.Replace( '/', '\\' ); // Convert to Windows-style slashes
+                        #endif
                     }
                     AStackString<> includePathsStr;
                     ProjectGeneratorBase::ConcatIntellisenseOptions( includePaths, includePathsStr, nullptr, ";" );

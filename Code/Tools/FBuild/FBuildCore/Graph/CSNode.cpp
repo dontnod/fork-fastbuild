@@ -74,9 +74,9 @@ bool CSNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const 
     Dependencies compilerInputPath;
     if ( !function->GetDirectoryListNodeList( nodeGraph,
                                               iter,
-                                              m_CompilerInputPath, 
+                                              m_CompilerInputPath,
                                               m_CompilerInputExcludePath,
-                                              m_CompilerInputExcludedFiles, 
+                                              m_CompilerInputExcludedFiles,
                                               m_CompilerInputExcludePattern,
                                               m_CompilerInputPathRecurse,
                                               &m_CompilerInputPattern,
@@ -178,10 +178,15 @@ CSNode::~CSNode() = default;
     EmitCompilationMessage( fullArgs );
 
     // spawn the process
-    Process p;
+    Process p( FBuild::Get().GetAbortBuildPointer() );
     if ( p.Spawn( GetCompiler()->GetName().Get(), fullArgs.GetFinalArgs().Get(),
                   workingDir, environment ) == false )
     {
+        if ( p.HasAborted() )
+        {
+            return NODE_RESULT_FAILED;
+        }
+
         FLOG_ERROR( "Failed to spawn process to build '%s'", GetName().Get() );
         return NODE_RESULT_FAILED;
     }
@@ -195,6 +200,11 @@ CSNode::~CSNode() = default;
 
     // Get result
     int result = p.WaitForExit();
+    if ( p.HasAborted() )
+    {
+        return NODE_RESULT_FAILED;
+    }
+
     bool ok = ( result == 0 );
 
     if ( !ok )

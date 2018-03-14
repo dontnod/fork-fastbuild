@@ -76,22 +76,12 @@ FunctionForEach::FunctionForEach()
 
         pos.SkipWhiteSpace();
 
-        // check for "in" token
-        bool foundIn = false;
-        if ( *pos == 'i' )
-        {
-            pos++;
-            if ( *pos == 'n' )
-            {
-                foundIn = true;
-            }
-        }
-        if ( foundIn == false )
+        // check for required "in" token
+        if ( pos.ParseExactString( "in" ) == false )
         {
             Error::Error_1201_MissingIn( pos, this );
             return false;
         }
-        pos++;
         pos.SkipWhiteSpace();
 
         if ( *pos != BFFParser::BFF_DECLARE_VAR_INTERNAL &&
@@ -121,7 +111,7 @@ FunctionForEach::FunctionForEach()
 
         if ( ( arrayParentScope && ( nullptr == arrayFrame ) ) || ( var == nullptr ) )
         {
-            Error::Error_1009_UnknownVariable( arrayNameStart, this );
+            Error::Error_1009_UnknownVariable( arrayNameStart, this, arrayVarName );
             return false;
         }
 

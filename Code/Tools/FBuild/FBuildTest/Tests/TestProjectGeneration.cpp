@@ -32,6 +32,13 @@ private:
 
     // XCode
     void XCode() const;
+
+    // Intellisense/CodeSense
+    void IntellisenseAndCodeSense() const;
+
+    // Helpers
+    void VCXProj_Intellisense_Check( const char * projectFile ) const;
+    void XCodeProj_CodeSense_Check( const char * projectFile ) const;
 };
 
 // Register Tests
@@ -42,6 +49,7 @@ REGISTER_TESTS_BEGIN( TestProjectGeneration )
     REGISTER_TEST( TestFunction_NoRebuild )
     REGISTER_TEST( TestFunction_Speed )
     REGISTER_TEST( XCode )
+    REGISTER_TEST( IntellisenseAndCodeSense )
 REGISTER_TESTS_END
 
 // Test
@@ -49,28 +57,24 @@ REGISTER_TESTS_END
 void TestProjectGeneration::Test() const
 {
     // work out where we are running, and find "Core"
-    AStackString<> oldDir;
-    TEST_ASSERT( FileIO::GetCurrentDir( oldDir ) );
-    AStackString<> baseDir( oldDir );
+    AStackString<> baseDir;
+    TEST_ASSERT( FileIO::GetCurrentDir( baseDir ) );
+    TEST_ASSERT( baseDir.FindI( "code" ) );
     #if defined( __WINDOWS__ )
-        const char * codeLoc = baseDir.FindI( "\\code\\" );
+        baseDir += "\\Core\\";
     #else
-        const char * codeLoc = baseDir.FindI( "/code/" );
-    #endif
-    TEST_ASSERT( codeLoc );
-    baseDir.SetLength( (uint32_t)( codeLoc - baseDir.Get() ) );
-    #if defined( __WINDOWS__ )
-        baseDir += "\\Code\\Core\\";
-    #else
-        baseDir += "/Code/Core/";
+        baseDir += "/Core/";
     #endif
     Array< AString > baseDirs;
     baseDirs.Append( baseDir );
 
     VSProjectGenerator pg;
 
-    // project name
-    pg.SetProjectName( AStackString<>( "Core" ) );
+    // project name/guid
+    AStackString<> name( "Core" );
+    AStackString<> guid;
+    VSProjectGenerator::FormatDeterministicProjectGUID( guid, name );
+    pg.SetProjectGuid( guid );
     pg.SetBasePaths( baseDirs );
 
     Array< VSProjectConfig > configs;
@@ -140,22 +144,25 @@ void TestProjectGeneration::Test() const
 //------------------------------------------------------------------------------
 void TestProjectGeneration::TestFunction() const
 {
-    AStackString<> project( "../../../../tmp/Test/ProjectGeneration/testproj.vcxproj" );
-    AStackString<> solution( "../../../../tmp/Test/ProjectGeneration/testsln.sln" );
-    AStackString<> filters( "../../../../tmp/Test/ProjectGeneration/testproj.vcxproj.filters" );
+    AStackString<> project( "../tmp/Test/ProjectGeneration/testproj.vcxproj" );
+    AStackString<> solution( "../tmp/Test/ProjectGeneration/testsln.sln" );
+    AStackString<> filters( "../tmp/Test/ProjectGeneration/testproj.vcxproj.filters" );
+
+    // Initialize
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestProjectGeneration/fbuild.bff";
+    options.m_ForceCleanBuild = true;
+    FBuild fBuild( options );
+    TEST_ASSERT( fBuild.Initialize() );
+
+    // Delete old files from previous runs
     EnsureFileDoesNotExist( project );
     EnsureFileDoesNotExist( solution );
     EnsureFileDoesNotExist( filters );
 
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestProjectGeneration/fbuild.bff";
-    options.m_ForceCleanBuild = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
-    FBuild fBuild( options );
-    TEST_ASSERT( fBuild.Initialize() );
-
+    // do build
     TEST_ASSERT( fBuild.Build( AStackString<>( "TestSln" ) ) );
-    TEST_ASSERT( fBuild.SaveDependencyGraph( "../../../../tmp/Test/ProjectGeneration/fbuild.fdb" ) );
+    TEST_ASSERT( fBuild.SaveDependencyGraph( "../tmp/Test/ProjectGeneration/fbuild.fdb" ) );
 
     EnsureFileExists( project );
     EnsureFileExists( solution );
@@ -174,8 +181,16 @@ void TestProjectGeneration::TestFunction() const
 //------------------------------------------------------------------------------
 void TestProjectGeneration::TestFunction_NoRebuild() const
 {
-    AStackString<> project( "../../../../tmp/Test/ProjectGeneration/testproj.vcxproj" );
-    AStackString<> filters( "../../../../tmp/Test/ProjectGeneration/testproj.vcxproj.filters" );
+    AStackString<> project( "../tmp/Test/ProjectGeneration/testproj.vcxproj" );
+    AStackString<> filters( "../tmp/Test/ProjectGeneration/testproj.vcxproj.filters" );
+
+    // Initialize
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Data/TestProjectGeneration/fbuild.bff";
+    FBuild fBuild( options );
+    TEST_ASSERT( fBuild.Initialize( "../tmp/Test/ProjectGeneration/fbuild.fdb" ) );
+
+    // Delete old files from previous runs
     EnsureFileExists( project );
     EnsureFileExists( filters );
 
@@ -188,17 +203,13 @@ void TestProjectGeneration::TestFunction_NoRebuild() const
     // so sleep long enough to ensure an invalid write would modify the time
     #if defined( __WINDOWS__ )
         Thread::Sleep( 1 ); // 1ms
-    #else
-        Thread::Sleep( 1000 ); // 1 second
+    #elif defined( __OSX__ )
+        Thread::Sleep( 1000 ); // Work around low time resolution of HFS+
+    #elif defined( __LINUX__ )
+        Thread::Sleep( 1000 ); // Work around low time resolution of ext2/ext3/reiserfs and time caching used by used by others
     #endif
 
     // do build
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestProjectGeneration/fbuild.bff";
-    options.m_ShowSummary = true; // required to generate stats for node count checks
-    FBuild fBuild( options );
-    TEST_ASSERT( fBuild.Initialize( "../../../../tmp/Test/ProjectGeneration/fbuild.fdb" ) );
-
     TEST_ASSERT( fBuild.Build( AStackString<>( "TestProj" ) ) );
 
     // Make sure files have not been changed
@@ -223,7 +234,10 @@ void TestProjectGeneration::TestFunction_Speed() const
     baseDirs.Append( baseDir );
 
     // project name
-    pg.SetProjectName( AStackString<>( "Big" ) );
+    AStackString<> name( "Big" );
+    AStackString<> guid;
+    VSProjectGenerator::FormatDeterministicProjectGUID( guid, name );
+    pg.SetProjectGuid( guid );
     pg.SetBasePaths( baseDirs );
 
     // platforms
@@ -267,20 +281,182 @@ void TestProjectGeneration::TestFunction_Speed() const
     }
 }
 
+// IntellisenseAndCodeSense
+//------------------------------------------------------------------------------
+void TestProjectGeneration::IntellisenseAndCodeSense() const
+{
+    // Parse bff
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestProjectGeneration/Intellisense/fbuild.bff";
+    FBuild fBuild( options );
+    TEST_ASSERT( fBuild.Initialize() );
+
+    // Generate project
+    TEST_ASSERT( fBuild.Build( AStackString<>( "Intellisense" ) ) );
+
+    // Ensure VS Intellisense info is present
+    VCXProj_Intellisense_Check( "../tmp/Test/ProjectGeneration/Intellisense/ObjectList.vcxproj" );
+    VCXProj_Intellisense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Library.vcxproj" );
+    VCXProj_Intellisense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Executable.vcxproj" );
+    VCXProj_Intellisense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Test.vcxproj" );
+
+    // Ensure XCode CodeSense info is present
+    XCodeProj_CodeSense_Check( "../tmp/Test/ProjectGeneration/Intellisense/ObjectList.xcodeproj/project.pbxproj" );
+    XCodeProj_CodeSense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Library.xcodeproj/project.pbxproj" );
+    XCodeProj_CodeSense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Executable.xcodeproj/project.pbxproj" );
+    XCodeProj_CodeSense_Check( "../tmp/Test/ProjectGeneration/Intellisense/Test.xcodeproj/project.pbxproj" );
+}
+
+// VCXProj_Intellisense_Check
+//------------------------------------------------------------------------------
+void TestProjectGeneration::VCXProj_Intellisense_Check( const char * projectFile ) const
+{
+    // Read Project
+    FileStream f;
+    TEST_ASSERT( f.Open( projectFile, FileStream::READ_ONLY ) );
+    AString buffer;
+    buffer.SetLength( (uint32_t)f.GetFileSize() );
+    TEST_ASSERT( f.ReadBuffer( buffer.Get(), f.GetFileSize() ) == f.GetFileSize() );
+    Array< AString > tokens;
+    buffer.Tokenize( tokens, '\n' );
+
+    // Check
+    bool definesOk = false;
+    bool includesOk = false;
+    for ( const AString & token : tokens )
+    {
+        if ( token.Find( "NMakePreprocessorDefinitions" ) )
+        {
+            TEST_ASSERT( token.Find( "INTELLISENSE_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_SPACE_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_SLASH_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_SLASH_SPACE_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_QUOTED_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_QUOTED_SPACE_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_QUOTED_SLASH_DEFINE" ) );
+            TEST_ASSERT( token.Find( "INTELLISENSE_QUOTED_SLASH_SPACE_DEFINE" ) );
+            definesOk = true;
+        }
+        else if ( token.Find( "NMakeIncludeSearchPath" ) )
+        {
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Space\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Slash\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Slash\\Space\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Quoted\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Quoted\\Space\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Quoted\\Slash\\Path" ) );
+            TEST_ASSERT( token.Find( "Intellisense\\Include\\Quoted\\Slash\\Space\\Path" ) );
+            includesOk = true;
+        }
+    }
+    TEST_ASSERT( definesOk );
+    TEST_ASSERT( includesOk );
+}
+
+
+// XCodeProj_CodeSense_Check
+//------------------------------------------------------------------------------
+void TestProjectGeneration::XCodeProj_CodeSense_Check( const char * projectFile ) const
+{
+    // Read Project
+    FileStream f;
+    TEST_ASSERT( f.Open( projectFile, FileStream::READ_ONLY ) );
+    AString buffer;
+    buffer.SetLength( (uint32_t)f.GetFileSize() );
+    TEST_ASSERT( f.ReadBuffer( buffer.Get(), f.GetFileSize() ) == f.GetFileSize() );
+    Array< AString > tokens;
+    buffer.Tokenize( tokens, '\n' );
+
+    // Check
+    const size_t NUM_DEFINES = 8;
+    bool definesOk[ NUM_DEFINES ] = { false, false, false, false, false, false, false, false };
+    const size_t NUM_INCLUDES = 8;
+    bool includesOk[ NUM_INCLUDES ] = { false, false, false, false, false, false, false, false };
+    bool inDefineSection = false;
+    bool inIncludeSection = false;
+    for ( const AString & token : tokens )
+    {
+        // Check for start/end of sections
+        if ( token.Find( "GCC_PREPROCESSOR_DEFINITIONS" ) )
+        {
+            inDefineSection = true;
+            continue;
+        }
+        if ( token.Find( "USER_HEADER_SEARCH_PATHS" ) )
+        {
+            inIncludeSection = true;
+            continue;
+        }
+        if ( token == "\t\t\t\t);" )
+        {
+            if ( inDefineSection )
+            {
+                inDefineSection = false;
+            }
+            else if ( inIncludeSection )
+            {
+                inIncludeSection = false;
+            }
+            continue;
+        }
+
+        // Defines
+        if ( inDefineSection )
+        {
+            if ( token.Find( "INTELLISENSE_DEFINE" ) )                      { definesOk[ 0 ] = true; }
+            if ( token.Find( "INTELLISENSE_SPACE_DEFINE" ) )                { definesOk[ 1 ] = true; }
+            if ( token.Find( "INTELLISENSE_SLASH_DEFINE" ) )                { definesOk[ 2 ] = true; }
+            if ( token.Find( "INTELLISENSE_SLASH_SPACE_DEFINE" ) )          { definesOk[ 3 ] = true; }
+            if ( token.Find( "INTELLISENSE_QUOTED_DEFINE" ) )               { definesOk[ 4 ] = true; }
+            if ( token.Find( "INTELLISENSE_QUOTED_SPACE_DEFINE" ) )         { definesOk[ 5 ] = true; }
+            if ( token.Find( "INTELLISENSE_QUOTED_SLASH_DEFINE" ) )         { definesOk[ 6 ] = true; }
+            if ( token.Find( "INTELLISENSE_QUOTED_SLASH_SPACE_DEFINE" ) )   { definesOk[ 7 ] = true; }
+            continue;
+        }
+
+        // Includes
+        if ( inIncludeSection )
+        {
+            if ( token.Find( "Intellisense/Include/Path" ) )                    { includesOk[ 0 ] = true; }
+            if ( token.Find( "Intellisense/Include/Space/Path" ) )              { includesOk[ 1 ] = true; }
+            if ( token.Find( "Intellisense/Include/Slash/Path" ) )              { includesOk[ 2 ] = true; }
+            if ( token.Find( "Intellisense/Include/Slash/Space/Path" ) )        { includesOk[ 3 ] = true; }
+            if ( token.Find( "Intellisense/Include/Quoted/Path" ) )             { includesOk[ 4 ] = true; }
+            if ( token.Find( "Intellisense/Include/Quoted/Space/Path" ) )       { includesOk[ 5 ] = true; }
+            if ( token.Find( "Intellisense/Include/Quoted/Slash/Path" ) )       { includesOk[ 6 ] = true; }
+            if ( token.Find( "Intellisense/Include/Quoted/Slash/Space/Path" ) ) { includesOk[ 7 ] = true; }
+            continue;
+        }
+    }
+
+    // Check we found them all
+    for ( size_t i=0; i<NUM_DEFINES; ++i )
+    {
+        TEST_ASSERT( definesOk[ i ]  );
+    }
+    for ( size_t i=0; i<NUM_INCLUDES; ++i )
+    {
+        TEST_ASSERT( includesOk[ i ]  );
+    }
+}
+
 // XCode
 //------------------------------------------------------------------------------
 void TestProjectGeneration::XCode() const
 {
-    AStackString<> project( "../../../../tmp/Test/ProjectGeneration/Test.xcodeproj/project.pbxproj" );
-    EnsureFileDoesNotExist( project );
+    AStackString<> project( "../tmp/Test/ProjectGeneration/Test.xcodeproj/project.pbxproj" );
 
-    // do build
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestProjectGeneration/xcodeproject.bff";
-    options.m_ShowSummary = true; // required to generate stats for node count checks
+    // Initialize
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestProjectGeneration/xcodeproject.bff";
     FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize() );
 
+    // Delete files from previous builds
+    EnsureFileDoesNotExist( project );
+
+    // do build
     TEST_ASSERT( fBuild.Build( AStackString<>( "XCodeProj" ) ) );
 
     // Check stats

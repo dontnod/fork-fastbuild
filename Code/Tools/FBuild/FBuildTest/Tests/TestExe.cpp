@@ -41,21 +41,12 @@ void TestExe::CreateNode() const
     FBuild fb;
     NodeGraph ng;
 
-    Dependencies inputLibraries( 1, false );
-    inputLibraries.Append( Dependency( ng.CreateFileNode( AStackString<>( "dummy.lib" ) ) ) );
-
-    ExeNode * exeNode = ng.CreateExeNode( AStackString<>( "exe.exe" ),
-                                            inputLibraries,
-                                            Dependencies(),
-                                            AString::GetEmpty(),
-                                            AStackString<>( "linker.exe" ),
-                                            AString::GetEmpty(), // args
-                                            0, // flags
-                                            Dependencies(),
-                                            AStackString<>(),
-                                            nullptr,
-                                            AString::GetEmpty() ); // assembly resources
-
+    #if defined( __WINDOWS__ )
+        AStackString<> exeName( "c:\\exe.exe" );
+    #else
+        AStackString<> exeName( "/tmp/exe.exe" );
+    #endif
+    ExeNode * exeNode = ng.CreateExeNode( exeName );
     TEST_ASSERT( exeNode->GetType() == Node::EXE_NODE );
     TEST_ASSERT( ExeNode::GetTypeS() == Node::EXE_NODE );
     TEST_ASSERT( AStackString<>( "Exe" ) == exeNode->GetTypeName() );
@@ -65,34 +56,33 @@ void TestExe::CreateNode() const
 //------------------------------------------------------------------------------
 void TestExe::Build() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestExe/exe.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestExe/exe.bff";
     options.m_ForceCleanBuild = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
     FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize() );
 
-    const AStackString<> exe( "../../../../tmp/Test/Exe/exe.exe" );
+    const AStackString<> exe( "../tmp/Test/Exe/exe.exe" );
 
     // clean up anything left over from previous runs
     EnsureFileDoesNotExist( exe );
 
     // build (via alias)
     TEST_ASSERT( fBuild.Build( AStackString<>( "Exe" ) ) );
-    TEST_ASSERT( fBuild.SaveDependencyGraph( "../../../../tmp/Test/Exe/exe.fdb" ) );
+    TEST_ASSERT( fBuild.SaveDependencyGraph( "../tmp/Test/Exe/exe.fdb" ) );
 
     // make sure all output is where it is expected
     EnsureFileExists( exe );
 
     // Check stats
     //               Seen,  Built,  Type
-    CheckStatsNode ( 1,     1,      Node::FILE_NODE ); // cpp
+    CheckStatsNode ( 2,     2,      Node::FILE_NODE ); // cpp + linker exe
     CheckStatsNode ( 1,     1,      Node::COMPILER_NODE );
     CheckStatsNode ( 1,     1,      Node::OBJECT_NODE );
     CheckStatsNode ( 1,     1,      Node::OBJECT_LIST_NODE );
     CheckStatsNode ( 1,     1,      Node::EXE_NODE );
     CheckStatsNode ( 1,     1,      Node::ALIAS_NODE );
-    CheckStatsTotal( 6,     6 );
+    CheckStatsTotal( 7,     7 );
 }
 
 // CheckValidExe
@@ -100,7 +90,7 @@ void TestExe::Build() const
 void TestExe::CheckValidExe() const
 {
     Process p;
-    p.Spawn( "../../../../tmp/Test/Exe/exe.exe", nullptr, nullptr, nullptr );
+    p.Spawn( "../tmp/Test/Exe/exe.exe", nullptr, nullptr, nullptr );
     int ret = p.WaitForExit();
     TEST_ASSERT( ret == 99 ); // verify expected ret code
 }
@@ -109,24 +99,23 @@ void TestExe::CheckValidExe() const
 //------------------------------------------------------------------------------
 void TestExe::Build_NoRebuild() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestExe/exe.bff";
-    options.m_ShowSummary = true; // required to generate stats for node count checks
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestExe/exe.bff";
     FBuild fBuild( options );
-    TEST_ASSERT( fBuild.Initialize( "../../../../tmp/Test/Exe/exe.fdb" ) );
+    TEST_ASSERT( fBuild.Initialize( "../tmp/Test/Exe/exe.fdb" ) );
 
     // build (via alias)
     TEST_ASSERT( fBuild.Build( AStackString<>( "Exe" ) ) );
 
     // Check stats
     //               Seen,  Built,  Type
-    CheckStatsNode ( 1,     1,      Node::FILE_NODE ); // cpp
+    CheckStatsNode ( 2,     2,      Node::FILE_NODE ); // cpp + linker exe
     CheckStatsNode ( 1,     0,      Node::COMPILER_NODE );
     CheckStatsNode ( 1,     0,      Node::OBJECT_NODE );
     CheckStatsNode ( 1,     0,      Node::OBJECT_LIST_NODE );
     CheckStatsNode ( 1,     0,      Node::EXE_NODE );
     CheckStatsNode ( 1,     1,      Node::ALIAS_NODE );
-    CheckStatsTotal( 6,     2 );
+    CheckStatsTotal( 7,     3 );
 
 }
 

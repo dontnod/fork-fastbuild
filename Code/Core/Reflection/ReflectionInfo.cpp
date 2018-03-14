@@ -45,7 +45,14 @@ ReflectionInfo::ReflectionInfo()
 
 // DESTRUCTOR
 //------------------------------------------------------------------------------
-ReflectionInfo::~ReflectionInfo() = default;
+ReflectionInfo::~ReflectionInfo()
+{
+    auto end = m_Properties.End();
+    for ( auto it = m_Properties.Begin(); it != end; ++it )
+    {
+        delete *it;
+    }
+}
 
 // Begin
 //------------------------------------------------------------------------------
@@ -174,7 +181,7 @@ const IMetaData * ReflectionInfo::HasMetaDataInternal( const ReflectionInfo * ri
         }
         m = m->GetNext();
     }
-    return nullptr;
+    return m_SuperClass ? m_SuperClass->HasMetaDataInternal( ri ) : nullptr;
 }
 
 // AddPropertyStruct

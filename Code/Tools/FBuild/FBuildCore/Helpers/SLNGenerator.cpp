@@ -116,7 +116,6 @@ void SLNGenerator::WriteHeader( const AString & solutionVisualStudioVersion,
     AStackString<> shortVersion( shortVersionStart, shortVersionEnd );
 
     // header
-    Write( "\r\n" ); // Deliberate blank line
     Write( "Microsoft Visual Studio Solution File, Format Version 12.00\r\n" );
     Write( "# Visual Studio %s\r\n", shortVersion.Get() );
     Write( "VisualStudioVersion = %s\r\n", version );
@@ -150,21 +149,11 @@ void SLNGenerator::WriteProjectListings( const AString& solutionBasePath,
         AStackString<> projectName( lastSlash  ? lastSlash + 1  : projectPath.Get(),
                                     lastPeriod ? lastPeriod     : projectPath.GetEnd() );
 
-        // retrieve projectGuid
-        AStackString<> projectGuid;
-        if ( (*it)->GetProjectGuid().GetLength() == 0 )
-        {
-            // For backward compatibility, keep the preceding slash and .vcxproj extension for GUID generation
-            AStackString<> projectNameForGuid( lastSlash ? lastSlash : projectPath.Get() );
-            VSProjectGenerator::FormatDeterministicProjectGUID( projectGuid, projectNameForGuid );
-        }
-        else
-        {
-            projectGuid = (*it)->GetProjectGuid();
-        }
-
         // make project path relative
         projectPath.Replace( solutionBasePath.Get(), "" );
+
+        // retrieve projectGuid
+        AStackString<> projectGuid( (*it)->GetProjectGuid() );
 
         // projectGuid must be uppercase (visual does that, it changes the .sln otherwise)
         projectGuid.ToUpper();
@@ -184,18 +173,21 @@ void SLNGenerator::WriteProjectListings( const AString& solutionBasePath,
         for ( const SLNDependency & deps : slnDeps )
         {
             // is the set of deps relevant to this project?
-            if ( deps.m_Projects.Find( fullProjectPath ) )
+            if ( !deps.m_Projects.Find( fullProjectPath ) )
             {
-                // get all the projects this project depends on
-                for ( const AString & dependency : deps.m_Dependencies )
-                {
-                    // For backward compatibility, keep the preceding slash and .vcxproj extension for GUID generation
-                    const char * projNameFromSlash = dependency.FindLast( NATIVE_SLASH );
-                    AStackString<> projectNameForGuid( projNameFromSlash ? projNameFromSlash : dependency.Get() );
+                continue;
+            }
 
-                    AStackString<> newGUID;
-                    VSProjectGenerator::FormatDeterministicProjectGUID( newGUID, projectNameForGuid );
-                    dependencyGUIDs.Append( newGUID );
+            // get all the projects this project depends on
+            for ( const AString & dependency : deps.m_Dependencies )
+            {
+                for ( const VCXProjectNode* dependencyProject : projects )
+                {
+                    if ( dependencyProject->GetName() == dependency )
+                    {
+                        dependencyGUIDs.Append( dependencyProject->GetProjectGuid() );
+                        break;
+                    }
                 }
             }
         }
@@ -361,7 +353,7 @@ void SLNGenerator::WriteNestedProjects( const Array< AString > & solutionProject
     const AString * const solutionProjectsToFolderEnd = solutionProjectsToFolder.End();
     for( const AString * it = solutionProjectsToFolder.Begin() ; it != solutionProjectsToFolderEnd ; ++it )
     {
-        Write( it->Get() );
+        Write( "%s", it->Get() );
     }
 
     // Write every intermediate path

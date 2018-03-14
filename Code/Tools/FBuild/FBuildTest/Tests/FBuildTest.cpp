@@ -14,7 +14,16 @@
 
 // Static Data
 //------------------------------------------------------------------------------
+/*static*/ bool FBuildTest::s_DebuggerAttached( false );
 /*static*/ AString FBuildTest::s_RecordedOutput( 1024 * 1024 );
+
+// CONSTRUCTOR (FBuildTest)
+//------------------------------------------------------------------------------
+FBuildTest::FBuildTest()
+{
+    s_DebuggerAttached = IsDebuggerAttached();
+    m_OriginalWorkingDir.SetReserved( 512 );
+}
 
 // PreTest
 //------------------------------------------------------------------------------
@@ -24,15 +33,32 @@
     s_RecordedOutput.Clear();
 
     FBuildStats::SetIgnoreCompilerNodeDeps( true );
+
+    // Store current working 
+    VERIFY( FileIO::GetCurrentDir( m_OriginalWorkingDir ) );
+
+    // Set the WorkingDir to be the source code "Code" dir
+    AStackString<> codeDir;
+    GetCodeDir( codeDir );
+    VERIFY( FileIO::SetCurrentDir( codeDir ) );
 }
 
 // PostTest
 //------------------------------------------------------------------------------
-/*virtual*/ void FBuildTest::PostTest() const
+/*virtual*/ void FBuildTest::PostTest( bool passed ) const
 {
+    VERIFY( FileIO::SetCurrentDir( m_OriginalWorkingDir ) );
+
     FBuildStats::SetIgnoreCompilerNodeDeps( false );
 
     Tracing::RemoveCallbackOutput( LoggingCallback );
+
+    // Print the output on failure, unless in the debugger
+    // (we print as we go if the debugger is attached)
+    if ( ( passed == false ) && ( s_DebuggerAttached == false ) )
+    {
+        OUTPUT( "%s", s_RecordedOutput.Get() );
+    }
 }
 
 // EnsureFileDoesNotExist
@@ -62,7 +88,7 @@ void FBuildTest::EnsureDirDoesNotExist( const char * dirPath ) const
 //------------------------------------------------------------------------------
 void FBuildTest::EnsureDirExists( const char * dirPath ) const
 {
-    TEST_ASSERT( FileIO::DirectoryExists( AStackString<>( dirPath ) ) );
+    TEST_ASSERT( FileIO::EnsurePathExists( AStackString<>( dirPath ) ) );
 }
 
 // CheckStatsNode
@@ -71,19 +97,19 @@ void FBuildTest::CheckStatsNode( const FBuildStats & stats, size_t numSeen, size
 {
     const FBuildStats::Stats & nodeStats = stats.GetStatsFor( nodeType );
 
-    size_t actualNumSeen = nodeStats.m_NumProcessed;
-    size_t actualNumBuilt = nodeStats.m_NumBuilt;
+    const uint32_t actualNumSeen = nodeStats.m_NumProcessed;
+    const uint32_t actualNumBuilt = nodeStats.m_NumBuilt;
 
     const bool nodeStatsOk = ( actualNumSeen == numSeen ) && ( actualNumBuilt == numBuilt );
     if ( !nodeStatsOk )
     {
         if ( actualNumSeen != numSeen )
         {
-            OUTPUT( "PROBLEM for %s: Saw %u instead of %u\n", Node::GetTypeName( nodeType ), actualNumSeen, numSeen );
+            OUTPUT( "PROBLEM for %s: Saw %u instead of %u\n", Node::GetTypeName( nodeType ), actualNumSeen, (uint32_t)numSeen );
         }
         if ( actualNumBuilt != numBuilt )
         {
-            OUTPUT( "PROBLEM for %s: Built %u instead of %u\n", Node::GetTypeName( nodeType ), actualNumBuilt, numBuilt );
+            OUTPUT( "PROBLEM for %s: Built %u instead of %u\n", Node::GetTypeName( nodeType ), actualNumBuilt, (uint32_t)numBuilt );
         }
         TEST_ASSERT( false );
     }
@@ -118,7 +144,7 @@ void FBuildTest::CheckStatsTotal( size_t numSeen, size_t numBuilt ) const
 
 // GetCodeDir
 //------------------------------------------------------------------------------
-void FBuildTest::GetCodeDir( AString & codeDir ) const
+/*static*/ void FBuildTest::GetCodeDir( AString & codeDir )
 {
     // we want the working dir to be the 'Code' directory
     TEST_ASSERT( FileIO::GetCurrentDir( codeDir ) );
@@ -136,7 +162,17 @@ void FBuildTest::GetCodeDir( AString & codeDir ) const
 bool FBuildTest::LoggingCallback( const char * message )
 {
     s_RecordedOutput.Append( message, AString::StrLen( message ) );
-    return true; // continue logging like normal
+    // If in the debugger, print the output normally as well, otherwise
+    // suppress and only print on failure
+    return s_DebuggerAttached;
+}
+
+// CONSTRUCTOR - FBuildTestOptions
+//------------------------------------------------------------------------------
+FBuildTestOptions::FBuildTestOptions()
+{
+    // Override defaults
+    m_ShowSummary = true; // required to generate stats for node count checks
 }
 
 //------------------------------------------------------------------------------

@@ -23,7 +23,7 @@ REFLECT_NODE_BEGIN( CopyDirNode, Node, MetaNone() )
     REFLECT_ARRAY(  m_SourcePaths,              "SourcePaths",              MetaPath() )
     REFLECT(        m_Dest,                     "Dest",                     MetaPath() )
     REFLECT_ARRAY(  m_SourcePathsPattern,       "SourcePathsPattern",       MetaOptional() )
-    REFLECT_ARRAY(  m_SourceExcludePaths,       "SourceExcludePaths",       MetaOptional() )
+    REFLECT_ARRAY(  m_SourceExcludePaths,       "SourceExcludePaths",       MetaOptional() + MetaPath() )
     REFLECT(        m_SourcePathsRecurse,       "SourcePathsRecurse",       MetaOptional() )
     REFLECT_ARRAY(  m_PreBuildDependencyNames,  "PreBuildDependencies",     MetaOptional() + MetaFile() + MetaAllowNonFile() )
 REFLECT_END( CopyDirNode )
@@ -49,7 +49,7 @@ bool CopyDirNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, c
     Dependencies sourcePaths;
     if ( !function->GetDirectoryListNodeList( nodeGraph,
                                               iter,
-                                              m_SourcePaths, 
+                                              m_SourcePaths,
                                               m_SourceExcludePaths,
                                               Array< AString >(),     // Unsupported: Excluded files
                                               Array< AString >(),    // Unsupported: Excluded patterns

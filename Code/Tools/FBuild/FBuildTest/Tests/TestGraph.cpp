@@ -5,6 +5,7 @@
 //------------------------------------------------------------------------------
 #include "FBuildTest.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
+#include "Tools/FBuild/FBuildCore/BFF/BFFIterator.h"
 #include "Tools/FBuild/FBuildCore/Graph/AliasNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/CompilerNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/CopyFileNode.h"
@@ -44,6 +45,7 @@ private:
     void EmptyGraph() const;
     void TestNodeTypes() const;
     void TestCleanPath() const;
+    void TestCleanPathPartial() const;
     void SingleFileNode() const;
     void SingleFileNodeMissing() const;
     void TestDirectoryListNode() const;
@@ -61,6 +63,7 @@ REGISTER_TESTS_BEGIN( TestGraph )
     REGISTER_TEST( EmptyGraph )
     REGISTER_TEST( TestNodeTypes )
     REGISTER_TEST( TestCleanPath )
+    REGISTER_TEST( TestCleanPathPartial )
     REGISTER_TEST( SingleFileNode )
     REGISTER_TEST( SingleFileNodeMissing )
     REGISTER_TEST( TestDirectoryListNode )
@@ -113,31 +116,23 @@ void TestGraph::TestNodeTypes() const
         TEST_ASSERT( AStackString<>( "CopyFile" ) == n->GetTypeName() );
     }
 
-    Array< AString > patterns;
-    patterns.Append( AStackString<>( "*.cpp" ) );
     #if defined( __WINDOWS__ )
-        DirectoryListNode * dn = ng.CreateDirectoryListNode( AStackString<>( "path\\|*.cpp|false|" ),
-                                                             AStackString<>( "path\\" ),
+        DirectoryListNode * dn = ng.CreateDirectoryListNode( AStackString<>( "path\\|*.cpp|false|" ) );
     #else
-        DirectoryListNode * dn = ng.CreateDirectoryListNode( AStackString<>( "path/|*.cpp|false|" ),
-                                                             AStackString<>( "path/" ),
+        DirectoryListNode * dn = ng.CreateDirectoryListNode( AStackString<>( "path/|*.cpp|false|" ) );
     #endif
-                                                             &patterns,
-                                                             false,
-                                                             Array< AString >(),
-                                                             Array< AString >(),
-                                                             Array< AString >() );
     TEST_ASSERT( dn->GetType() == Node::DIRECTORY_LIST_NODE );
     TEST_ASSERT( DirectoryListNode::GetTypeS() == Node::DIRECTORY_LIST_NODE );
     TEST_ASSERT( AStackString<>( "Directory" ) == dn->GetTypeName() );
 
     {
-        Dependencies empty;
-        Dependencies inputs;
-        inputs.Append( Dependency( fn ) );
-        Node * n = ng.CreateExecNode( AStackString<>( "dst" ), inputs, fn, AStackString<>( "args" ), AStackString<>( "workingDir" ), 0, empty, false );
+        #if defined( __WINDOWS__ )
+            Node * n = ng.CreateExecNode( AStackString<>( "c:\\execdummy" ) );
+        #else
+            Node * n = ng.CreateExecNode( AStackString<>( "/execdummy/execdummy" ) );
+        #endif
         TEST_ASSERT( n->GetType() == Node::EXEC_NODE );
-        TEST_ASSERT( ExecNode::GetTypeS() == Node::EXEC_NODE);
+        TEST_ASSERT( ExecNode::GetTypeS() == Node::EXEC_NODE );
         TEST_ASSERT( AStackString<>( "Exec" ) == n->GetTypeName() );
     }
     {
@@ -167,17 +162,23 @@ void TestGraph::TestNodeTypes() const
         TEST_ASSERT( AStackString<>( "Alias" ) == n->GetTypeName() );
     }
     {
-        Dependencies libraries( 1, false );
-        libraries.Append( Dependency( fn ) );
-        Node * n = ng.CreateDLLNode( AStackString<>( "zz.dll" ), libraries, Dependencies(), AString::GetEmpty(), AString::GetEmpty(), AString::GetEmpty(), 0, Dependencies(), AStackString<>(), nullptr, AString::GetEmpty() );
+        #if defined( __WINDOWS__ )
+            AStackString<> dllName( "c:\\lib.dll" );
+        #else
+            AStackString<> dllName( "/tmp/lib.so" );
+        #endif
+        Node * n = ng.CreateDLLNode( dllName );
         TEST_ASSERT( n->GetType() == Node::DLL_NODE );
         TEST_ASSERT( DLLNode::GetTypeS() == Node::DLL_NODE );
         TEST_ASSERT( AStackString<>( "DLL" ) == n->GetTypeName() );
     }
     {
-        Dependencies libraries( 1, false );
-        libraries.Append( Dependency( fn ) );
-        Node * n = ng.CreateExeNode( AStackString<>( "zz.exe" ), libraries, Dependencies(), AString::GetEmpty(), AString::GetEmpty(), AString::GetEmpty(), 0, Dependencies(), AStackString<>(),nullptr, AString::GetEmpty() );
+        #if defined( __WINDOWS__ )
+            AStackString<> exeName( "c:\\exe.exe" );
+        #else
+            AStackString<> exeName( "/tmp/exe.exe" );
+        #endif
+        Node * n = ng.CreateExeNode( exeName );
         TEST_ASSERT( n->GetType() == Node::EXE_NODE );
         TEST_ASSERT( ExeNode::GetTypeS() == Node::EXE_NODE );
         TEST_ASSERT( AStackString<>( "Exe" ) == n->GetTypeName() );
@@ -246,29 +247,29 @@ void TestGraph::TestDirectoryListNode() const
     FBuild fb;
     NodeGraph ng;
 
-    // make sure a node of the name we are going to use doesn't exist
+    // Generate a valid DirectoryListNode name
+    AStackString<> name;
     #if defined( __WINDOWS__ )
-        const AStackString<> testFolder( "Data\\TestGraph\\" );
+        const AStackString<> testFolder( "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\" );
     #else
-        const AStackString<> testFolder( "Data/TestGraph/" );
+        const AStackString<> testFolder( "Tools/FBuild/FBuildTest/Data/TestGraph/" );
     #endif
-
     Array< AString > patterns;
     patterns.Append( AStackString<>( "library.*" ) );
+    DirectoryListNode::FormatName( testFolder,
+                                   &patterns,
+                                   true, // recursive
+                                   Array< AString >(), // excludePaths,
+                                   Array< AString >(), // excludeFiles,
+                                   Array< AString >(), // excludePatterns,
+                                   name );
 
     // create the node, and make sure we can access it by name
-    #if defined( __WINDOWS__ )
-        const AStackString<> name( "Data\\TestGraph\\|library.*|true|" );
-    #else
-        const AStackString<> name( "Data/TestGraph/|library.*|true|" );
-    #endif
-    DirectoryListNode * node = ng.CreateDirectoryListNode( name,
-                                                           testFolder,
-                                                           &patterns,
-                                                           true,
-                                                           Array< AString >(),
-                                                           Array< AString >(),
-                                                           Array< AString >() );
+    DirectoryListNode * node = ng.CreateDirectoryListNode( name );
+    node->m_Path = testFolder;
+    node->m_Patterns = patterns;
+    BFFIterator iter;
+    TEST_ASSERT( node->Initialize( ng, iter, nullptr ) );
     TEST_ASSERT( ng.FindNode( name ) == node );
 
     TEST_ASSERT( fb.Build( node ) );
@@ -276,8 +277,8 @@ void TestGraph::TestDirectoryListNode() const
     // make sure we got the expected results
     TEST_ASSERT( node->GetFiles().GetSize() == 2 );
     #if defined( __WINDOWS__ )
-        const char * fileName1 = "Data\\TestGraph\\library.cpp";
-        const char * fileName2 = "Data\\TestGraph\\library.o";
+        const char * fileName1 = "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\library.cpp";
+        const char * fileName2 = "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\library.o";
     #else
         const char * fileName1 = "Data/TestGraph/library.cpp";
         const char * fileName2 = "Data/TestGraph/library.o";
@@ -299,9 +300,6 @@ void TestGraph::TestDirectoryListNode() const
 //------------------------------------------------------------------------------
 void TestGraph::TestSerialization() const
 {
-    AStackString<> codeDir;
-    GetCodeDir( codeDir );
-
     const char * dbFile1    = "../tmp/Test/Graph/fbuild.db.1";
     const char * dbFile2    = "../tmp/Test/Graph/fbuild.db.2";
 
@@ -309,7 +307,6 @@ void TestGraph::TestSerialization() const
     {
         FBuildOptions options;
         options.m_ConfigFile = "fbuild.bff";
-        options.SetWorkingDir( codeDir );
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize() );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile1 ) );
@@ -320,7 +317,6 @@ void TestGraph::TestSerialization() const
     {
         FBuildOptions options;
         options.m_ConfigFile = "fbuild.bff";
-        options.SetWorkingDir( codeDir );
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile2 ) );
@@ -440,16 +436,111 @@ void TestGraph::TestCleanPath() const
     #undef CHECK
 }
 
+// TestPartialCleanPath
+//------------------------------------------------------------------------------
+void TestGraph::TestCleanPathPartial() const
+{
+    // Change current dir to a known location that exists on all windows machines
+    FBuildOptions fo;
+    #if defined( __WINDOWS__ )
+        fo.SetWorkingDir( AStackString<>( "C:\\Windows\\System32" ) );
+    #else
+        fo.SetWorkingDir( AStackString<>( "/tmp/subDir" ) );
+    #endif
+
+    FBuild f( fo );
+
+    #if defined( __WINDOWS__ )
+        #define CHECK( a, b, c ) \
+            { \
+                AStackString<> cleaned; \
+                NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
+                TEST_ASSERT( cleaned == b ); \
+            }
+    #else
+        #define CHECK( a, b, c ) \
+            { \
+                AStackString<> cleaned; \
+                NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
+                TEST_ASSERT( cleaned == c ); \
+            }
+    #endif
+
+    //   "\..\"
+    CHECK( "file.dat", "file.dat", "file.dat" )
+    CHECK( "..\\file.dat", "..\\file.dat", "../file.dat" )
+    CHECK( "..\\..\\file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK( "..\\..\\..\\file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
+
+    //   "/../"
+    CHECK( "../file.dat", "..\\file.dat", "../file.dat" )
+    CHECK( "../../file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK( "../../../file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
+
+    //   "\.\"
+    CHECK( ".\\file.dat", "file.dat", "file.dat" )
+    CHECK( "folder\\.\\file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK( ".\\.\\.\\file.dat", "file.dat", "file.dat" )
+
+    //   "/./"
+    CHECK( "./file.dat", "file.dat", "file.dat" )
+    CHECK( "folder/./file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK( "./././file.dat", "file.dat", "file.dat" )
+
+    // ".." collapsing
+    CHECK( "one\\two\\..\\..\\three\\four\\file.dat", "three\\four\\file.dat", "three/four/file.dat" )
+    CHECK( "one\\two\\..\\three\\file.dat", "one\\three\\file.dat", "one/three/file.dat" )
+    CHECK( "one\\two\\..\\..\\..\\..\\three\\four\\file.dat", "..\\..\\three\\four\\file.dat", "../../three/four/file.dat" )
+
+    //   full path '\'
+    #if defined( __WINDOWS__ )
+        CHECK( "C:\\Windows\\System32\\file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK( "C:\\Windows\\System32\\..\\file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK( "C:\\Windows\\System32\\..\\..\\file.dat", "C:\\file.dat", "" )
+        CHECK( "C:\\Windows\\System32\\..\\..\\..\\file.dat", "C:\\file.dat", "" )
+    #endif
+
+    //   full path '/'
+    #if defined( __WINDOWS__ )
+        CHECK( "C:/Windows/System32/file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK( "C:/Windows/System32/../file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK( "C:/Windows/System32/../../file.dat", "C:\\file.dat", "" )
+        CHECK( "C:/Windows/System32/../../../file.dat", "C:\\file.dat", "" )
+    #endif
+
+    // files with . in them
+    CHECK( ".file.dat", ".file.dat", ".file.dat" )
+    CHECK( ".file", ".file", ".file" )
+    CHECK( "subdir\\.file", "subdir\\.file", "subdir/.file" )
+
+    // multiple slash removal
+    CHECK( "subdir\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK( "subdir//.file", "subdir\\.file", "subdir/.file" )
+    CHECK( "subdir//.//.file", "subdir\\.file", "subdir/.file" )
+    CHECK( "subdir\\\\.\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK( "subdir\\\\..\\\\.file", ".file", ".file" )
+    CHECK( "subdir//..//.file", ".file", ".file" )
+
+    // edge cases/regressions
+    #if defined( __WINDOWS__ )
+        // - There was a bug with folders beginning with a slash on Windows
+        CHECK( "\\folder\\file", "folder\\file", "" )
+    #endif
+
+    #undef CHECK
+}
+
+
 // TestDeepGraph
 //------------------------------------------------------------------------------
 void TestGraph::TestDeepGraph() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestGraph/DeepGraph.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/DeepGraph.bff";
     options.m_UseCacheRead = true;
     options.m_UseCacheWrite = true;
 
-    const char * dbFile1 = "../../../../tmp/Test/Graph/DeepGraph.fdb";
+    const char * dbFile1 = "../tmp/Test/Graph/DeepGraph.fdb";
 
     {
         // do a clean build
@@ -466,7 +557,6 @@ void TestGraph::TestDeepGraph() const
         Timer t;
 
         // no op build
-        options.m_ShowSummary = true; // required to generate stats for node count checks
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.Build( AStackString<>( "all" ) ) );
@@ -482,10 +572,10 @@ void TestGraph::TestDeepGraph() const
 //------------------------------------------------------------------------------
 void TestGraph::TestNoStopOnFirstError() const
 {
-    FBuildOptions options;
-    options.m_ShowSummary = true;   // required to generate stats for node count checks
+    FBuildTestOptions options;
     options.m_NumWorkerThreads = 0; // ensure test behaves deterministically
-    options.m_ConfigFile = "Data/TestGraph/NoStopOnFirstError/fbuild.bff";
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/NoStopOnFirstError/fbuild.bff";
+    options.m_FastCancel = true;
 
     // "Stop On First Error" build (default behaviour)
     {
@@ -527,11 +617,11 @@ void TestGraph::TestNoStopOnFirstError() const
 //------------------------------------------------------------------------------
 void TestGraph::DBLocationChanged() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestGraph/DatabaseMoved/fbuild.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/DatabaseMoved/fbuild.bff";
 
-    const char* dbFile1 = "../../../../tmp/Test/Graph/DatabaseMoved/1/GraphMoved.fdb";
-    const char* dbFile2 = "../../../../tmp/Test/Graph/DatabaseMoved/2/GraphMoved.fdb";
+    const char* dbFile1 = "../tmp/Test/Graph/DatabaseMoved/1/GraphMoved.fdb";
+    const char* dbFile2 = "../tmp/Test/Graph/DatabaseMoved/2/GraphMoved.fdb";
 
     EnsureFileDoesNotExist( dbFile1 );
     EnsureFileDoesNotExist( dbFile2 );
@@ -541,10 +631,8 @@ void TestGraph::DBLocationChanged() const
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize() );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile1 ) );
-    }
 
-    // Copy the DB
-    {
+        // Copy the DB
         AStackString<> dbPath2( dbFile2 );
         dbPath2.SetLength( (uint32_t)( dbPath2.FindLast( FORWARD_SLASH ) - dbPath2.Get() ) );
         TEST_ASSERT( FileIO::EnsurePathExists( dbPath2 ) );
@@ -564,9 +652,9 @@ void TestGraph::DBLocationChanged() const
 //------------------------------------------------------------------------------
 void TestGraph::BFFDirtied() const
 {
-    const char* originalBFF             = "Data/TestGraph/BFFDirtied/fbuild.bff";
-    const char* copyOfBFF           = "../../../../tmp/Test/Graph/BFFDirtied/fbuild.bff";
-    const char* dbFile              = "../../../../tmp/Test/Graph/BFFDirtied/fbuild.fdb";
+    const char* originalBFF             = "Tools/FBuild/FBuildTest/Data/TestGraph/BFFDirtied/fbuild.bff";
+    const char* copyOfBFF           = "../tmp/Test/Graph/BFFDirtied/fbuild.bff";
+    const char* dbFile              = "../tmp/Test/Graph/BFFDirtied/fbuild.fdb";
 
     EnsureFileDoesNotExist( copyOfBFF );
     EnsureFileDoesNotExist( dbFile );
@@ -602,6 +690,8 @@ void TestGraph::BFFDirtied() const
 
     #if defined( __OSX__ )
         Thread::Sleep( 1000 ); // Work around low time resolution of HFS+
+    #elif defined( __LINUX__ )
+        Thread::Sleep( 1000 ); // Work around low time resolution of ext2/ext3/reiserfs and time caching used by used by others
     #endif
 
     // Modity BFF (make it empty)
@@ -640,8 +730,12 @@ void TestGraph::DBVersionChanged() const
 
     ( (char *)ms.GetDataMutable() )[3] = ( NodeGraphHeader::NODE_GRAPH_CURRENT_VERSION - 1 );
 
-    const char* oldDB       = "../../../../tmp/Test/Graph/DBVersionChanged/fbuild.fdb";
-    const char* emptyBFF    = "../../../../tmp/Test/Graph/DBVersionChanged/fbuild.bff";
+    const char* oldDB       = "../tmp/Test/Graph/DBVersionChanged/fbuild.fdb";
+    const char* emptyBFF    = "../tmp/Test/Graph/DBVersionChanged/fbuild.bff";
+
+    FBuildTestOptions options;
+    options.m_ConfigFile = emptyBFF;
+    FBuild fBuild( options );
 
     // cleanup & prep
     {
@@ -660,9 +754,6 @@ void TestGraph::DBVersionChanged() const
     }
 
     // Init from old DB
-    FBuildOptions options;
-    options.m_ConfigFile = emptyBFF;
-    FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize( oldDB ) );
 
     // Ensure user was informed about change

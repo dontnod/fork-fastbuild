@@ -96,10 +96,14 @@ public:
     static        void AbortBuild();
     static        void OnBuildError();
     static inline bool GetStopBuild() { return s_StopBuild; }
+    static inline volatile bool * GetAbortBuildPointer() { return &s_AbortBuild; }
 
     inline ICache * GetCache() const { return m_Cache; }
 
     static bool GetTempDir( AString & outTempDir );
+
+    bool CacheOutputInfo() const;
+    bool CacheTrim() const;
 
 private:
     bool GetTargets( const Array< AString > & targets, Dependencies & outDeps ) const;
@@ -107,6 +111,7 @@ private:
     void UpdateBuildStatus( const Node * node );
 
     static bool s_StopBuild;
+    static volatile bool s_AbortBuild;  // -fastcancel - TODO:C merge with StopBuild
 
     BFFMacros * m_Macros;
 

@@ -12,6 +12,8 @@
 #include "Core/Time/Timer.h"
 #include "Core/Tracing/Tracing.h"
 
+#include <memory.h> // for memset
+
 // Defines
 //------------------------------------------------------------------------------
 #define NUM_TEST_PASSES ( 16 )
@@ -203,7 +205,7 @@ void TestTestTCPConnectionPool::TestDataTransfer() const
     {
         server.m_ReceivedBytes = 0;
         server.m_DataSize = sendSize;
-        
+
         Timer timer;
 
         size_t totalSent = 0;
@@ -213,12 +215,12 @@ void TestTestTCPConnectionPool::TestDataTransfer() const
             TEST_ASSERT( client.Send( ci, data.Get(), sendSize ) );
             totalSent += sendSize;
         }
-        
+
         while( server.m_ReceivedBytes < totalSent )
         {
             Thread::Sleep( 1 );
         }
-        
+
         const float speedMBs = ( float( totalSent ) / timer.GetElapsed() ) / float( 1024 * 1024 );
         OUTPUT( "Speed: %2.1f MiB/s, SendSize: %u\n", speedMBs, (uint32_t)sendSize );
 
@@ -273,7 +275,8 @@ void TestTestTCPConnectionPool::TestConnectionStuckDuringSend() const
     const ConnectionInfo * ci = (const ConnectionInfo *)userData;
     TCPConnectionPool & client = ci->GetTCPConnectionPool();
     // send lots of data to slow server
-    AutoPtr< char > mem( FNEW( char[ 10 * MEGABYTE ] ) );
+    AutoPtr< char > mem( (char *)ALLOC( 10 * MEGABYTE ) );
+    memset( mem.Get(), 0, 10 * MEGABYTE );
     for ( size_t i=0; i<1000; ++i )
     {
         if ( !client.Send( ci, mem.Get(), 10 * MEGABYTE ) )
