@@ -3,8 +3,8 @@
 
 // Root Paths
 //------------------------------------------------------------------------------
-.Windows10_SDKBasePath          = '../External/SDK/Windows/10'
-.Windows10_SDKVersion           = '10.0.14393.0'
+.Windows10_SDKBasePath          = 'C:/Program Files (x86)/Windows Kits/10'
+.Windows10_SDKVersion           = '10.0.16299.0'
 
 // Defines
 //------------------------------------------------------------------------------
@@ -57,7 +57,7 @@
 ]
 Compiler( 'ResourceCompiler-Windows10' )
 {
-    .Executable                 = '$Windows10_SDKBasePath$/Bin/x86/RC.exe'
+    .Executable                 = '$Windows10_SDKBasePath$/Bin/$Windows10_SDKVersion$/x86/RC.exe'
     .CompilerFamily             = 'custom'
 }
 
