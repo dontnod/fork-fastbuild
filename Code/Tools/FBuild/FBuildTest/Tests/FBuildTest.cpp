@@ -9,12 +9,14 @@
 #include "Tools/FBuild/FBuildCore/FLog.h"
 
 #include "Core/FileIO/FileIO.h"
+#include "Core/FileIO/PathUtils.h"
 #include "Core/Strings/AStackString.h"
 #include "Core/Tracing/Tracing.h"
 
 // Static Data
 //------------------------------------------------------------------------------
 /*static*/ bool FBuildTest::s_DebuggerAttached( false );
+/*static*/ Mutex FBuildTest::s_OutputMutex;
 /*static*/ AString FBuildTest::s_RecordedOutput( 1024 * 1024 );
 
 // CONSTRUCTOR (FBuildTest)
@@ -148,10 +150,14 @@ void FBuildTest::CheckStatsTotal( size_t numSeen, size_t numBuilt ) const
 {
     // we want the working dir to be the 'Code' directory
     TEST_ASSERT( FileIO::GetCurrentDir( codeDir ) );
+    if ( !codeDir.EndsWith( NATIVE_SLASH ) )
+    {
+        codeDir += NATIVE_SLASH;
+    }
     #if defined( __WINDOWS__ )
-        const char * codePos = codeDir.FindI( "\\code\\" );
+        const char * codePos = codeDir.FindLastI( "\\code\\" );
     #else
-        const char * codePos = codeDir.FindI( "/code/" );
+        const char * codePos = codeDir.FindLastI( "/code/" );
     #endif
     TEST_ASSERT( codePos );
     codeDir.SetLength( (uint16_t)( codePos - codeDir.Get() + 6 ) );
@@ -161,6 +167,7 @@ void FBuildTest::CheckStatsTotal( size_t numSeen, size_t numBuilt ) const
 //------------------------------------------------------------------------------
 bool FBuildTest::LoggingCallback( const char * message )
 {
+    MutexHolder mh( s_OutputMutex );
     s_RecordedOutput.Append( message, AString::StrLen( message ) );
     // If in the debugger, print the output normally as well, otherwise
     // suppress and only print on failure

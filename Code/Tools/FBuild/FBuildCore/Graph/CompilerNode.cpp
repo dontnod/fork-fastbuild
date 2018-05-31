@@ -125,8 +125,10 @@ bool CompilerNode::InitializeCompilerFamily( const BFFIterator & iter, const Fun
 
         // Clang
         if ( compiler.EndsWithI( "clang++.exe" ) ||
+             compiler.EndsWithI( "clang++.cmd" ) ||
              compiler.EndsWithI( "clang++" ) ||
              compiler.EndsWithI( "clang.exe" ) ||
+             compiler.EndsWithI( "clang.cmd" ) ||
              compiler.EndsWithI( "clang" ) ||
              compiler.EndsWithI( "clang-cl.exe" ) ||
              compiler.EndsWithI( "clang-cl" ) )
@@ -197,6 +199,14 @@ bool CompilerNode::InitializeCompilerFamily( const BFFIterator & iter, const Fun
             return true;
         }
 
+        // Orbis wave shader compiler
+        if ( compiler.EndsWithI( "orbis-wave-psslc.exe" ) ||
+             compiler.EndsWithI( "orbis-wave-psslc" ) )
+        {
+            m_CompilerFamilyEnum = ORBIS_WAVE_PSSLC;
+            return true;
+        }
+
         // Auto-detect failed
         Error::Error_1500_CompilerDetectionFailed( iter, function, compiler );
         return false;
@@ -251,6 +261,11 @@ bool CompilerNode::InitializeCompilerFamily( const BFFIterator & iter, const Fun
     if ( m_CompilerFamilyString.EqualsI( "vbcc" ) )
     {
         m_CompilerFamilyEnum = VBCC;
+        return true;
+    }
+	if ( m_CompilerFamilyString.EqualsI( "orbis-wave-psslc" ) )
+    {
+        m_CompilerFamilyEnum = ORBIS_WAVE_PSSLC;
         return true;
     }
 
