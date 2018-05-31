@@ -654,16 +654,23 @@ static const void * PrepareBufferForHash( const char * inputBuffer, size_t input
         return nullptr;
     }
 
-    uint32_t match = 0, dst = 0;
+    uint32_t match = 0, skipped = 0, dst = 0;
     for ( uint32_t src = 0 ; src < inputLen ; ++src )
     {
         ASSERT( dst < inputLen );
 
         if ( BufferForHashEqual( inputBuffer[src], rootPath[match] ) && inputLen - src >= rootPathLen - match )
         {
+            // Skip escaped backslashes
+            if (inputBuffer[src] == '\\' && inputBuffer[src + 1] == '\\')
+            {
+                ++src;
+                ++skipped;
+            }
+
             if ( ++match == rootPathLen )
             {
-                match = 0;
+                match = skipped = 0;
                 preparedBuffer[dst++] = rootPathAlias;
             }
         }
@@ -673,11 +680,11 @@ static const void * PrepareBufferForHash( const char * inputBuffer, size_t input
 
             if ( match )
             {
-                for ( uint32_t i = 0 ; i < match ; ++i )
+                for ( uint32_t i = src - match - skipped ; i < src ; ++i )
                 {
-                    preparedBuffer[dst++] = inputBuffer[src - match + i];
+                    preparedBuffer[dst++] = inputBuffer[i];
                 }
-                match = 0;
+                match = skipped = 0;
             }
 
             preparedBuffer[dst++] = inputBuffer[src];
