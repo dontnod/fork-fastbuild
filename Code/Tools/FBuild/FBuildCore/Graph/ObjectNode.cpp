@@ -1084,7 +1084,7 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
 
     // hash the pre-processed input data
     ASSERT( job->GetData() );
-    const uint64_t preprocessedSourceKey = xxHash::Calc64( job->GetData(), job->GetDataSize() );
+    const uint64_t preprocessedSourceKey = FBuild::Hash32( job->GetData(), job->GetDataSize() );
 
     // hash the build "environment"
     // TODO:B Exclude preprocessor control defines (the preprocessed input has considered those already)
@@ -1095,7 +1095,7 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
         const bool showIncludes = false;
         const bool finalize = false; // Don't write args to reponse file
         BuildArgs( job, args, PASS_COMPILE_PREPROCESSED, useDeoptimization, showIncludes, finalize );
-        commandLineKey = xxHash::Calc32( args.GetRawArgs().Get(), args.GetRawArgs().GetLength() );
+        commandLineKey = FBuild::Hash32( args.GetRawArgs().Get(), args.GetRawArgs().GetLength() );
     }
 
     // ToolChain hash
@@ -1143,7 +1143,7 @@ bool ObjectNode::RetrieveFromCache( Job * job )
             uint64_t pchKey = 0;
             if ( GetFlag( FLAG_CREATING_PCH ) && GetFlag( FLAG_MSVC ) )
             {
-                pchKey = xxHash::Calc64( cacheData, cacheDataSize );
+                pchKey = FBuild::Hash64( cacheData, cacheDataSize );
             }
 
             // do decompression
@@ -1280,7 +1280,7 @@ void ObjectNode::WriteToCache( Job * job )
                 // Dependent objects need to know the PCH key to be able to pull from the cache
                 if ( GetFlag( FLAG_CREATING_PCH ) && GetFlag( FLAG_MSVC ) )
                 {
-                    m_PCHCacheKey = xxHash::Calc64( data, dataSize );
+                    m_PCHCacheKey = FBuild::Hash64( data, dataSize );
                 }
 
                 // Output
@@ -2087,7 +2087,7 @@ bool ObjectNode::WriteTmpFile( Job * job, AString & tmpDirectory, AString & tmpF
     ASSERT( job->GetData() && job->GetDataSize() );
 
     Node * sourceFile = GetSourceFile();
-    uint32_t sourceNameHash = xxHash::Calc32( sourceFile->GetName().Get(), sourceFile->GetName().GetLength() );
+    uint32_t sourceNameHash = FBuild::Hash32( sourceFile->GetName().Get(), sourceFile->GetName().GetLength() );
 
     FileStream tmpFile;
     AStackString<> fileName( sourceFile->GetName().FindLast( NATIVE_SLASH ) + 1 );
