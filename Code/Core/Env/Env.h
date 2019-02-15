@@ -34,6 +34,8 @@ public:
     static bool SetEnvVariable( const char * envVarName, const AString & envVarValue );
     static void GetCmdLine( AString & cmdLine );
     static void GetExePath( AString & path );
+    static bool IsStdOutRedirected( const bool recheck = false );
+    static bool GetLocalUserName( AString & outUserName );
 
     static uint32_t GetLastErr();
 };

@@ -155,6 +155,19 @@ JobQueue::~JobQueue()
         FDELETE m_Workers[ i ];
     }
 
+    // free locally available distributed jobs
+    {
+        MutexHolder m( m_DistributedJobsMutex );
+        // we may have some distributable jobs that could not be built,
+        // so delete them here before checking mem usage below
+        const size_t numJobsAvailable = m_DistributableJobs_Available.GetSize();
+        for ( size_t i=0; i<numJobsAvailable; ++i )
+        {
+            FDELETE m_DistributableJobs_Available[ i ];
+        }
+        m_DistributableJobs_Available.Clear();
+    }
+
     ASSERT( m_CompletedJobs.IsEmpty() );
     ASSERT( m_CompletedJobsFailed.IsEmpty() );
     ASSERT( Job::GetTotalLocalDataMemoryUsage() == 0 );
@@ -364,12 +377,17 @@ Job * JobQueue::OnReturnRemoteJob( uint32_t jobId )
             // Wait for cancellation
             {
                 PROFILE_SECTION( "WaitForLocalCancel" );
-                m_DistributedJobsMutex.Unlock(); // Allow WorkerThread access
                 while ( job->GetDistributionState() == Job::DIST_RACE_WON_REMOTELY_CANCEL_LOCAL )
                 {
+                    m_DistributedJobsMutex.Unlock(); // Allow WorkerThread access
                     Thread::Sleep( 1 );
+                    m_DistributedJobsMutex.Lock();
+
+                    if ( !m_DistributableJobs_InProgress.FindDeref( jobId ) )
+                    {
+                        return nullptr; // Job disappeared - FinishedProcessingJob reaped it
+                    }
                 }
-                m_DistributedJobsMutex.Lock();
             }
 
             // Did cancallation work? It can fail if we try to cancel after build has finished
@@ -597,6 +615,7 @@ void JobQueue::FinishedProcessingJob( Job * job, bool success, bool wasARemoteJo
             // Local Job finished while trying to cancel, so fail cancellation
             // Local thread now entirely owns Job, so set state as if race
             // never happened
+            m_DistributableJobs_InProgress.Erase( it );
             job->SetDistributionState( Job::DIST_COMPLETED_LOCALLY ); // Cancellation has failed
 
         }
@@ -668,7 +687,7 @@ void JobQueue::FinishedProcessingJob( Job * job, bool success, bool wasARemoteJo
 
     // make sure the output path exists for files
     // (but don't bother for input files)
-    const bool isOutputFile = node->IsAFile() && ( node->GetType() != Node::FILE_NODE ) && ( node->GetType() != Node::COMPILER_NODE );
+    const bool isOutputFile = node->IsAFile() && ( node->GetType() != Node::FILE_NODE );
     if ( isOutputFile )
     {
         if ( Node::EnsurePathExistsForFile( node->GetName() ) == false )
@@ -678,7 +697,7 @@ void JobQueue::FinishedProcessingJob( Job * job, bool success, bool wasARemoteJo
         }
     }
 
-    Node::BuildResult result = Node::NODE_RESULT_FAILED;
+    Node::BuildResult result;
     if ( FBuild::Get().GetOptions().m_FastCancel && FBuild::GetStopBuild() )
     {
         // When stopping build and fast cancel is active we simulate a build error with this node.

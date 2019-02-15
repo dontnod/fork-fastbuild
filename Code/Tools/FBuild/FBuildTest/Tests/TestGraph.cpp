@@ -32,7 +32,7 @@
 
 // system
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Windows.h>
 #endif
 
 // TestGraph
@@ -94,12 +94,11 @@ void TestGraph::TestNodeTypes() const
     TEST_ASSERT( fn->GetType() == Node::FILE_NODE);
     TEST_ASSERT( FileNode::GetTypeS() == Node::FILE_NODE);
 
-    CompilerNode * cn( nullptr );
     {
         #if defined( __WINDOWS__ )
-            cn = ng.CreateCompilerNode( AStackString<>( "c:\\cl.exe" ) );
+            CompilerNode * cn = ng.CreateCompilerNode( AStackString<>( "c:\\cl.exe" ) );
         #else
-            cn = ng.CreateCompilerNode( AStackString<>( "/usr/bin/gcc" ) );
+            CompilerNode * cn = ng.CreateCompilerNode( AStackString<>( "/usr/bin/gcc" ) );
         #endif
         TEST_ASSERT( cn->GetType() == Node::COMPILER_NODE );
         TEST_ASSERT( AStackString<>( "Compiler" ) == cn->GetTypeName() );
@@ -250,9 +249,9 @@ void TestGraph::TestDirectoryListNode() const
     // Generate a valid DirectoryListNode name
     AStackString<> name;
     #if defined( __WINDOWS__ )
-        const AStackString<> testFolder( "Data\\TestGraph\\" );
+        const AStackString<> testFolder( "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\" );
     #else
-        const AStackString<> testFolder( "Data/TestGraph/" );
+        const AStackString<> testFolder( "Tools/FBuild/FBuildTest/Data/TestGraph/" );
     #endif
     Array< AString > patterns;
     patterns.Append( AStackString<>( "library.*" ) );
@@ -277,8 +276,8 @@ void TestGraph::TestDirectoryListNode() const
     // make sure we got the expected results
     TEST_ASSERT( node->GetFiles().GetSize() == 2 );
     #if defined( __WINDOWS__ )
-        const char * fileName1 = "Data\\TestGraph\\library.cpp";
-        const char * fileName2 = "Data\\TestGraph\\library.o";
+        const char * fileName1 = "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\library.cpp";
+        const char * fileName2 = "Tools\\FBuild\\FBuildTest\\Data\\TestGraph\\library.o";
     #else
         const char * fileName1 = "Data/TestGraph/library.cpp";
         const char * fileName2 = "Data/TestGraph/library.o";
@@ -300,19 +299,18 @@ void TestGraph::TestDirectoryListNode() const
 //------------------------------------------------------------------------------
 void TestGraph::TestSerialization() const
 {
-    AStackString<> codeDir;
-    GetCodeDir( codeDir );
-
     const char * dbFile1    = "../tmp/Test/Graph/fbuild.db.1";
     const char * dbFile2    = "../tmp/Test/Graph/fbuild.db.2";
 
     // load the config file and save the resulting db
     {
+        // Ensure we're creating the DB by parsing the BFF
+        EnsureFileDoesNotExist( AStackString<>( dbFile1 ) );
+
         FBuildOptions options;
         options.m_ConfigFile = "fbuild.bff";
-        options.SetWorkingDir( codeDir );
         FBuild fBuild( options );
-        TEST_ASSERT( fBuild.Initialize() );
+        TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile1 ) );
         TEST_ASSERT( FileIO::FileExists( dbFile1 ) );
     }
@@ -321,7 +319,6 @@ void TestGraph::TestSerialization() const
     {
         FBuildOptions options;
         options.m_ConfigFile = "fbuild.bff";
-        options.SetWorkingDir( codeDir );
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile2 ) );
@@ -447,92 +444,101 @@ void TestGraph::TestCleanPathPartial() const
 {
     // Change current dir to a known location that exists on all windows machines
     FBuildOptions fo;
-#if defined( __WINDOWS__ )
-    fo.SetWorkingDir(AStackString<>("C:\\Windows\\System32"));
-#else
-    fo.SetWorkingDir(AStackString<>("/tmp/subDir"));
-#endif
+    #if defined( __WINDOWS__ )
+        fo.SetWorkingDir( AStackString<>( "C:\\Windows\\System32" ) );
+    #else
+        fo.SetWorkingDir( AStackString<>( "/tmp/subDir" ) );
+    #endif
 
-    FBuild f(fo);
+    FBuild f( fo );
 
-#if defined( __WINDOWS__ )
-#define CHECK(a, b, c) \
+    #define CHECK( input, expectedOutput, makeFullPath ) \
         { \
             AStackString<> cleaned; \
-            NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
-            TEST_ASSERT( cleaned == b ); \
+            NodeGraph::CleanPath( AStackString<>( input ), cleaned, makeFullPath ); \
+            TEST_ASSERT( cleaned == expectedOutput ); \
         }
-#else
-#define CHECK(a, b, c) \
-        { \
-            AStackString<> cleaned; \
-            NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
-            TEST_ASSERT( cleaned == c ); \
-        }
-#endif
+
+    #if defined( __WINDOWS__ )
+        #define CHECK_RELATIVE( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedWindows, false );
+        #define CHECK_FULLPATH( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedWindows, true );
+    #else
+        #define CHECK_RELATIVE( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedOther, false );
+        #define CHECK_FULLPATH( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedOther, true );
+    #endif
 
     //   "\..\"
-    CHECK("file.dat", "file.dat", "file.dat")
-    CHECK("..\\file.dat", "..\\file.dat", "../file.dat")
-    CHECK("..\\..\\file.dat", "..\\..\\file.dat", "../../file.dat")
-    CHECK("..\\..\\..\\file.dat", "..\\..\\..\\file.dat", "../../../file.dat")
+    CHECK_RELATIVE( "file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "..\\file.dat", "..\\file.dat", "../file.dat" )
+    CHECK_RELATIVE( "..\\..\\file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK_RELATIVE( "..\\..\\..\\file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
 
     //   "/../"
-    CHECK("../file.dat", "..\\file.dat", "../file.dat")
-    CHECK("../../file.dat", "..\\..\\file.dat", "../../file.dat")
-    CHECK("../../../file.dat", "..\\..\\..\\file.dat", "../../../file.dat")
+    CHECK_RELATIVE( "../file.dat", "..\\file.dat", "../file.dat" )
+    CHECK_RELATIVE( "../../file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK_RELATIVE( "../../../file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
 
     //   "\.\"
-    CHECK(".\\file.dat", "file.dat", "file.dat")
-    CHECK("folder\\.\\file.dat", "folder\\file.dat", "folder/file.dat")
-    CHECK(".\\.\\.\\file.dat", "file.dat", "file.dat")
+    CHECK_RELATIVE( ".\\file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "folder\\.\\file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK_RELATIVE( ".\\.\\.\\file.dat", "file.dat", "file.dat" )
 
     //   "/./"
-    CHECK("./file.dat", "file.dat", "file.dat")
-    CHECK("folder/./file.dat", "folder\\file.dat", "folder/file.dat")
-    CHECK("./././file.dat", "file.dat", "file.dat")
+    CHECK_RELATIVE( "./file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "folder/./file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK_RELATIVE( "./././file.dat", "file.dat", "file.dat" )
 
     // ".." collapsing
-    CHECK("one\\two\\..\\..\\three\\four\\file.dat", "three\\four\\file.dat", "three/four/file.dat")
-    CHECK("one\\two\\..\\three\\file.dat", "one\\three\\file.dat", "one/three/file.dat")
-    CHECK("one\\two\\..\\..\\..\\..\\three\\four\\file.dat", "..\\..\\three\\four\\file.dat", "..//..//three/four/file.dat")
+    CHECK_RELATIVE( "one\\two\\..\\..\\three\\four\\file.dat", "three\\four\\file.dat", "three/four/file.dat" )
+    CHECK_RELATIVE( "one\\two\\..\\three\\file.dat", "one\\three\\file.dat", "one/three/file.dat" )
+    CHECK_RELATIVE( "one\\two\\..\\..\\..\\..\\three\\four\\file.dat", "..\\..\\three\\four\\file.dat", "../../three/four/file.dat" )
 
     //   full path '\'
-#if defined( __WINDOWS__ )
-    CHECK("C:\\Windows\\System32\\file.dat", "C:\\Windows\\System32\\file.dat", "")
-    CHECK("C:\\Windows\\System32\\..\\file.dat", "C:\\Windows\\file.dat", "")
-    CHECK("C:\\Windows\\System32\\..\\..\\file.dat", "C:\\file.dat", "")
-    CHECK("C:\\Windows\\System32\\..\\..\\..\\file.dat", "C:\\file.dat", "")
-#endif
+    #if defined( __WINDOWS__ )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\..\\file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\..\\..\\file.dat", "C:\\file.dat", "" )
+    #endif
 
     //   full path '/'
-#if defined( __WINDOWS__ )
-    CHECK("C:/Windows/System32/file.dat", "C:\\Windows\\System32\\file.dat", "")
-    CHECK("C:/Windows/System32/../file.dat", "C:\\Windows\\file.dat", "")
-    CHECK("C:/Windows/System32/../../file.dat", "C:\\file.dat", "")
-    CHECK("C:/Windows/System32/../../../file.dat", "C:\\file.dat", "")
-#endif
+    #if defined( __WINDOWS__ )
+        CHECK_RELATIVE( "C:/Windows/System32/file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../../file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../../../file.dat", "C:\\file.dat", "" )
+    #endif
 
     // files with . in them
-    CHECK(".file.dat", ".file.dat", ".file.dat")
-    CHECK(".file", ".file", ".file")
-    CHECK("subdir\\.file", "subdir\\.file", "subdir/.file")
+    CHECK_RELATIVE( ".file.dat", ".file.dat", ".file.dat" )
+    CHECK_RELATIVE( ".file", ".file", ".file" )
+    CHECK_RELATIVE( "subdir\\.file", "subdir\\.file", "subdir/.file" )
 
     // multiple slash removal
-    CHECK("subdir\\\\.file", "subdir\\.file", "subdir/.file")
-    CHECK("subdir//.file", "subdir\\.file", "subdir/.file")
-    CHECK("subdir//.//.file", "subdir\\.file", "subdir/.file")
-    CHECK("subdir\\\\.\\\\.file", "subdir\\.file", "subdir/.file")
-    CHECK("subdir\\\\..\\\\.file", ".file", ".file")
-    CHECK("subdir//..//.file", ".file", ".file")
+    CHECK_RELATIVE( "subdir\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir//.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir//.//.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir\\\\.\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir\\\\..\\\\.file", ".file", ".file" )
+    CHECK_RELATIVE( "subdir//..//.file", ".file", ".file" )
 
     // edge cases/regressions
-#if defined( __WINDOWS__ )
-    // - There was a bug with folders beginning with a slash on Windows
-    CHECK("\\folder\\file", "folder\\file", "")
-#endif
+    #if defined( __WINDOWS__ )
+        // - There was a bug with folders beginning with a slash on Windows
+        CHECK_RELATIVE( "\\folder\\file", "folder\\file", "" )
+    #endif
+    // - A bug meant paths terminated with .. were not correctly handled
+    CHECK_FULLPATH( "..", "C:\\Windows\\", "/tmp/" )
+    CHECK_FULLPATH( ".\\..", "C:\\Windows\\", "/tmp/" )
+    CHECK_FULLPATH( "./..", "C:\\Windows\\", "/tmp/" )
 
-#undef CHECK
+    #undef CHECK_FULLPATH
+    #undef CHECK_RELATIVE
+    #undef CHECK
 }
 
 
@@ -540,12 +546,12 @@ void TestGraph::TestCleanPathPartial() const
 //------------------------------------------------------------------------------
 void TestGraph::TestDeepGraph() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestGraph/DeepGraph.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/DeepGraph.bff";
     options.m_UseCacheRead = true;
     options.m_UseCacheWrite = true;
 
-    const char * dbFile1 = "../../../../tmp/Test/Graph/DeepGraph.fdb";
+    const char * dbFile1 = "../tmp/Test/Graph/DeepGraph.fdb";
 
     {
         // do a clean build
@@ -562,7 +568,6 @@ void TestGraph::TestDeepGraph() const
         Timer t;
 
         // no op build
-        options.m_ShowSummary = true; // required to generate stats for node count checks
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.Build( AStackString<>( "all" ) ) );
@@ -578,10 +583,9 @@ void TestGraph::TestDeepGraph() const
 //------------------------------------------------------------------------------
 void TestGraph::TestNoStopOnFirstError() const
 {
-    FBuildOptions options;
-    options.m_ShowSummary = true;   // required to generate stats for node count checks
+    FBuildTestOptions options;
     options.m_NumWorkerThreads = 0; // ensure test behaves deterministically
-    options.m_ConfigFile = "Data/TestGraph/NoStopOnFirstError/fbuild.bff";
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/NoStopOnFirstError/fbuild.bff";
     options.m_FastCancel = true;
 
     // "Stop On First Error" build (default behaviour)
@@ -624,11 +628,11 @@ void TestGraph::TestNoStopOnFirstError() const
 //------------------------------------------------------------------------------
 void TestGraph::DBLocationChanged() const
 {
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestGraph/DatabaseMoved/fbuild.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestGraph/DatabaseMoved/fbuild.bff";
 
-    const char* dbFile1 = "../../../../tmp/Test/Graph/DatabaseMoved/1/GraphMoved.fdb";
-    const char* dbFile2 = "../../../../tmp/Test/Graph/DatabaseMoved/2/GraphMoved.fdb";
+    const char* dbFile1 = "../tmp/Test/Graph/DatabaseMoved/1/GraphMoved.fdb";
+    const char* dbFile2 = "../tmp/Test/Graph/DatabaseMoved/2/GraphMoved.fdb";
 
     EnsureFileDoesNotExist( dbFile1 );
     EnsureFileDoesNotExist( dbFile2 );
@@ -638,10 +642,8 @@ void TestGraph::DBLocationChanged() const
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize() );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile1 ) );
-    }
 
-    // Copy the DB
-    {
+        // Copy the DB
         AStackString<> dbPath2( dbFile2 );
         dbPath2.SetLength( (uint32_t)( dbPath2.FindLast( FORWARD_SLASH ) - dbPath2.Get() ) );
         TEST_ASSERT( FileIO::EnsurePathExists( dbPath2 ) );
@@ -661,9 +663,9 @@ void TestGraph::DBLocationChanged() const
 //------------------------------------------------------------------------------
 void TestGraph::BFFDirtied() const
 {
-    const char* originalBFF             = "Data/TestGraph/BFFDirtied/fbuild.bff";
-    const char* copyOfBFF           = "../../../../tmp/Test/Graph/BFFDirtied/fbuild.bff";
-    const char* dbFile              = "../../../../tmp/Test/Graph/BFFDirtied/fbuild.fdb";
+    const char* originalBFF             = "Tools/FBuild/FBuildTest/Data/TestGraph/BFFDirtied/fbuild.bff";
+    const char* copyOfBFF           = "../tmp/Test/Graph/BFFDirtied/fbuild.bff";
+    const char* dbFile              = "../tmp/Test/Graph/BFFDirtied/fbuild.fdb";
 
     EnsureFileDoesNotExist( copyOfBFF );
     EnsureFileDoesNotExist( dbFile );
@@ -739,8 +741,12 @@ void TestGraph::DBVersionChanged() const
 
     ( (char *)ms.GetDataMutable() )[3] = ( NodeGraphHeader::NODE_GRAPH_CURRENT_VERSION - 1 );
 
-    const char* oldDB       = "../../../../tmp/Test/Graph/DBVersionChanged/fbuild.fdb";
-    const char* emptyBFF    = "../../../../tmp/Test/Graph/DBVersionChanged/fbuild.bff";
+    const char* oldDB       = "../tmp/Test/Graph/DBVersionChanged/fbuild.fdb";
+    const char* emptyBFF    = "../tmp/Test/Graph/DBVersionChanged/fbuild.bff";
+
+    FBuildTestOptions options;
+    options.m_ConfigFile = emptyBFF;
+    FBuild fBuild( options );
 
     // cleanup & prep
     {
@@ -759,9 +765,6 @@ void TestGraph::DBVersionChanged() const
     }
 
     // Init from old DB
-    FBuildOptions options;
-    options.m_ConfigFile = emptyBFF;
-    FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize( oldDB ) );
 
     // Ensure user was informed about change

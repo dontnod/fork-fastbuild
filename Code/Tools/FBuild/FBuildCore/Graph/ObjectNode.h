@@ -27,13 +27,13 @@ class ObjectNode : public FileNode
     REFLECT_NODE_DECLARE( ObjectNode )
 public:
     ObjectNode();
-    bool Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function );
+    virtual bool Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function ) override;
     // simplified remote constructor
     explicit ObjectNode( const AString & objectName,
                          NodeProxy * srcFile,
                          const AString & compilerOptions,
                          uint32_t flags );
-    virtual ~ObjectNode();
+    virtual ~ObjectNode() override;
 
     static inline Node::Type GetTypeS() { return Node::OBJECT_NODE; }
 
@@ -59,7 +59,9 @@ public:
         FLAG_QT_RCC             =   0x40000,
         FLAG_WARNINGS_AS_ERRORS_MSVC    = 0x80000,
         FLAG_VBCC               =   0x100000,
-        FLAG_STATIC_ANALYSIS_MSVC = 0x200000
+        FLAG_STATIC_ANALYSIS_MSVC = 0x200000,
+        FLAG_ORBIS_WAVE_PSSLC   =   0x400000,
+        FLAG_DIAGNOSTICS_COLOR_AUTO = 0x800000,
     };
     static uint32_t DetermineFlags( const CompilerNode * compilerNode,
                                     const AString & args,
@@ -73,18 +75,16 @@ public:
     inline bool IsMSVC() const { return GetFlag( FLAG_MSVC ); }
     inline bool IsUsingPDB() const { return GetFlag( FLAG_USING_PDB ); }
 
-    virtual void Save( IOStream & stream ) const override;
-    static Node * Load( NodeGraph & nodeGraph, IOStream & stream );
-
     virtual void SaveRemote( IOStream & stream ) const override;
     static Node * LoadRemote( IOStream & stream );
 
-    inline Node * GetCompiler() const { return m_StaticDependencies[ 0 ].GetNode(); }
+    CompilerNode * GetCompiler() const;
     inline Node * GetSourceFile() const { return m_StaticDependencies[ 1 ].GetNode(); }
-    Node * GetDedicatedPreprocessor() const;
+    CompilerNode * GetDedicatedPreprocessor() const;
     #if defined( __WINDOWS__ )
         inline Node * GetPrecompiledHeaderCPPFile() const { ASSERT( GetFlag( FLAG_CREATING_PCH ) ); return m_StaticDependencies[ 1 ].GetNode(); }
     #endif
+    ObjectNode * GetPrecompiledHeader() const;
 
     void GetPDBName( AString & pdbName ) const;
 
@@ -94,6 +94,8 @@ private:
     virtual BuildResult DoBuild( Job * job ) override;
     virtual BuildResult DoBuild2( Job * job, bool racingRemoteJob ) override;
     virtual bool Finalize( NodeGraph & nodeGraph ) override;
+
+    virtual void Migrate( const Node & oldNode ) override;
 
     BuildResult DoBuildMSCL_NoCache( Job * job, bool useDeoptimization );
     BuildResult DoBuildWithPreProcessor( Job * job, bool useDeoptimization, bool useCache, bool useSimpleDist );
@@ -190,7 +192,7 @@ private:
     Array< AString >    m_PreBuildDependencyNames;
 
     // Internal State
-    ObjectNode *        m_PrecompiledHeader                 = nullptr;
+    AString             m_PrecompiledHeader;
     uint32_t            m_Flags                             = 0;
     uint32_t            m_PreprocessorFlags                 = 0;
     uint64_t            m_PCHCacheKey                       = 0;

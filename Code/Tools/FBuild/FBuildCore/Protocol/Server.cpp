@@ -20,15 +20,10 @@
 #include "Core/Profile/Profile.h"
 #include "Core/Strings/AStackString.h"
 
-// Defines
-//------------------------------------------------------------------------------
-#define SERVER_STATUS_SEND_FREQUENCY ( 1.0f )
-
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 Server::Server( uint32_t numThreadsInJobQueue )
     : m_ShouldExit( false )
-    , m_Exited( false )
     , m_ClientList( 32, true )
 {
     m_JobQueueRemote = FNEW( JobQueueRemote( numThreadsInJobQueue ? numThreadsInJobQueue : Env::GetNumProcessors() ) );
@@ -46,10 +41,7 @@ Server::~Server()
 {
     m_ShouldExit = true;
     JobQueueRemote::Get().WakeMainThread();
-    while ( m_Exited == false )
-    {
-        Thread::Sleep( 1 );
-    }
+    Thread::WaitForThread( m_Thread );
 
     ShutdownAllConnections();
 
@@ -97,8 +89,8 @@ bool Server::IsSynchingTool( AString & statusStr ) const
             if ( synching )
             {
                 statusStr.Format( "Synchronizing Compiler %2.1f / %2.1f MiB\n",
-                                    (float)synchDone / (float)MEGABYTE,
-                                    (float)synchTotal / (float)MEGABYTE );
+                                    (double)( (float)synchDone / (float)MEGABYTE ),
+                                    (double)( (float)synchTotal / (float)MEGABYTE ) );
                 return true;
             }
         }
@@ -399,7 +391,7 @@ void Server::Process( const ConnectionInfo * connection, const Protocol::MsgMani
         ToolManifest ** found = m_Tools.FindDeref( toolId );
         ASSERT( found );
         manifest = *found;
-        manifest->Deserialize( ms, true ); // true == remote
+        manifest->DeserializeFromRemote( ms );
     }
 
     // manifest has checked local files, from previous sessions an may
@@ -519,8 +511,6 @@ void Server::ThreadFunc()
 
         JobQueueRemote::Get().MainThreadWait( 100 );
     }
-
-    m_Exited = true;
 }
 
 // FindNeedyClients
@@ -681,12 +671,12 @@ void Server::RequestMissingFiles( const ConnectionInfo * connection, ToolManifes
 {
     MutexHolder manifestMH( m_ToolManifestsMutex );
 
-    const Array< ToolManifest::File > & files = manifest->GetFiles();
+    const Array< ToolManifestFile > & files = manifest->GetFiles();
     const size_t numFiles = files.GetSize();
     for ( size_t i=0; i<numFiles; ++i )
     {
-        const ToolManifest::File & f = files[ i ];
-        if ( f.m_SyncState == ToolManifest::File::NOT_SYNCHRONIZED )
+        const ToolManifestFile & f = files[ i ];
+        if ( f.m_SyncState == ToolManifestFile::NOT_SYNCHRONIZED )
         {
             // request this file
             Protocol::MsgRequestFile reqFileMsg( manifest->GetToolId(), (uint32_t)i );

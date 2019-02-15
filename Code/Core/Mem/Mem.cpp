@@ -21,7 +21,14 @@
 //------------------------------------------------------------------------------
 void * Alloc( size_t size )
 {
-    return AllocFileLine( size, sizeof( void * ), "Unknown", 0 );
+    #if defined( __clang__ )
+        // Work around clang bug (incorrectly using movaps requiring 16 byte alignment)
+        // Last seen in Apple LLVM version 10.0.0 (clang-1000.11.45.5) but exists in
+        // other versions as well
+        return AllocFileLine( size, 16, "Unknown", 0 );
+    #else
+        return AllocFileLine( size, sizeof( void * ), "Unknown", 0 );
+    #endif
 }
 
 // Alloc
@@ -35,7 +42,13 @@ void * Alloc( size_t size, size_t alignment )
 //------------------------------------------------------------------------------
 void * AllocFileLine( size_t size, const char * file, int line )
 {
-    return AllocFileLine( size, sizeof( void * ), file, line );
+    #if defined( __clang__ )
+        // Last seen in Apple LLVM version 10.0.0 (clang-1000.11.45.5) but exists in
+        // other versions as well
+        return AllocFileLine( size, 16, file, line );
+    #else
+        return AllocFileLine( size, sizeof( void * ), file, line );
+    #endif
 }
 
 // AllocFileLine
@@ -98,9 +111,11 @@ void Free( void * ptr )
     void operator delete( void * ptr, const char *, int ) { Free( ptr ); }
     void operator delete[]( void * ptr, const char *, int ) { Free( ptr ); }
 #endif
+#if !__has_feature( address_sanitizer ) && !__has_feature( memory_sanitizer ) && !defined( __SANITIZE_ADDRESS__ )
 void * operator new( size_t size ) { return Alloc( size ); }
 void * operator new[]( size_t size ) { return Alloc( size ); }
-void operator delete( void * ptr ) { Free( ptr ); }
-void operator delete[]( void * ptr ) { Free( ptr ); }
+void operator delete( void * ptr ) NOEXCEPT { Free( ptr ); }
+void operator delete[]( void * ptr ) NOEXCEPT { Free( ptr ); }
+#endif
 
 //------------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 
 #include "Core/FileIO/FileIO.h"
+#include "Core/Process/Thread.h"
 #include "Core/Strings/AStackString.h"
 
 // TestPrecompiledHeaders
@@ -18,17 +19,19 @@ private:
     DECLARE_TESTS
 
     // Helpers
-    FBuildStats Build( FBuildOptions options = FBuildOptions(),
+    FBuildStats Build( FBuildTestOptions options = FBuildTestOptions(),
                        bool useDB = true,
                        const char * target = nullptr ) const;
-    const char * GetPCHDBFileName() const { return "../../../../tmp/Test/PrecompiledHeaders/pch.fdb"; }
-    const char * GetPCHDBClangFileName() const { return "../../../../tmp/Test/PrecompiledHeaders/pchclang-windows.fdb"; }
+    const char * GetPCHDBFileName() const { return "../tmp/Test/PrecompiledHeaders/pch.fdb"; }
+    const char * GetPCHDBClangFileName() const { return "../tmp/Test/PrecompiledHeaders/pchclang-windows.fdb"; }
 
     // Tests
     void TestPCH() const;
     void TestPCH_NoRebuild() const;
+    void TestPCH_NoRebuild_BFFChange() const;
     void TestPCHWithCache() const;
     void TestPCHWithCache_NoRebuild() const;
+    void TestPCHWithCache_BFFChange() const;
     void PreventUselessCacheTraffic_MSVC() const;
     void CacheUniqueness() const;
     void CacheUniqueness2() const;
@@ -49,8 +52,10 @@ private:
 REGISTER_TESTS_BEGIN( TestPrecompiledHeaders )
     REGISTER_TEST( TestPCH )
     REGISTER_TEST( TestPCH_NoRebuild )
+    REGISTER_TEST( TestPCH_NoRebuild_BFFChange )
     REGISTER_TEST( TestPCHWithCache )
     REGISTER_TEST( TestPCHWithCache_NoRebuild )
+    REGISTER_TEST( TestPCHWithCache_BFFChange )
     REGISTER_TEST( CacheUniqueness )
     REGISTER_TEST( CacheUniqueness2 )
     REGISTER_TEST( Deoptimization )
@@ -66,9 +71,9 @@ REGISTER_TESTS_END
 
 // Build
 //------------------------------------------------------------------------------
-FBuildStats TestPrecompiledHeaders::Build( FBuildOptions options, bool useDB, const char * target ) const
+FBuildStats TestPrecompiledHeaders::Build( FBuildTestOptions options, bool useDB, const char * target ) const
 {
-    options.m_ConfigFile = "Data/TestPrecompiledHeaders/fbuild.bff";
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/fbuild.bff";
     options.m_ShowSummary = true; // required to generate stats for node count checks
 
     FBuild fBuild( options );
@@ -84,20 +89,19 @@ FBuildStats TestPrecompiledHeaders::Build( FBuildOptions options, bool useDB, co
 //------------------------------------------------------------------------------
 void TestPrecompiledHeaders::TestPCH() const
 {
-    FBuildOptions options;
+    FBuildTestOptions options;
     options.m_ForceCleanBuild = true;
     options.m_UseCacheWrite = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
 
     #if defined( __WINDOWS__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.obj" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.obj" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
     #elif defined( __LINUX__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.o" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.h.gch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.o" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.h.gch" );
     #elif defined( __OSX__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.o" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.o" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
     #endif
     EnsureFileDoesNotExist( obj );
     EnsureFileDoesNotExist( pch );
@@ -148,24 +152,47 @@ void TestPrecompiledHeaders::TestPCH_NoRebuild() const
     CheckStatsTotal( stats, 7+numF, 2+numF );
 }
 
+// TestPCH_NoRebuild_BFFChange
+//------------------------------------------------------------------------------
+void TestPrecompiledHeaders::TestPCH_NoRebuild_BFFChange() const
+{
+    FBuildTestOptions options;
+    options.m_ForceDBMigration_Debug = true;
+    FBuildStats stats = Build( options );
+
+    // Check stats
+    //                      Seen,   Built,  Type
+    uint32_t numF = 4; // pch.h / slow.h / pchuser.cpp / linker exe
+    #if defined( __WINDOWS__ )
+        numF++; // pch.cpp
+    #endif
+    CheckStatsNode ( stats, numF,   numF,   Node::FILE_NODE );  // cpp + pch cpp + pch .h
+    CheckStatsNode ( stats, 1,      1,      Node::COMPILER_NODE ); // Compiler rebuilds after migration
+    CheckStatsNode ( stats, 2,      0,      Node::OBJECT_NODE );// obj + pch obj
+    CheckStatsNode ( stats, 1,      0,      Node::OBJECT_LIST_NODE );
+    CheckStatsNode ( stats, 1,      1,      Node::DIRECTORY_LIST_NODE );
+    CheckStatsNode ( stats, 1,      1,      Node::ALIAS_NODE );
+    CheckStatsNode ( stats, 1,      0,      Node::EXE_NODE );
+    CheckStatsTotal( stats, 7+numF, 3+numF );
+}
+
 // TestPCHWithCache
 //------------------------------------------------------------------------------
 void TestPrecompiledHeaders::TestPCHWithCache() const
 {
-    FBuildOptions options;
+    FBuildTestOptions options;
     options.m_ForceCleanBuild = true;
     options.m_UseCacheRead = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
 
     #if defined( __WINDOWS__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.obj" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.obj" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
     #elif defined( __LINUX__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.o" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.h.gch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.o" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.h.gch" );
     #elif defined( __OSX__ )
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/PCHUser.o" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/PCHUser.o" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch" );
     #endif
     EnsureFileDoesNotExist( obj );
     EnsureFileDoesNotExist( pch );
@@ -216,17 +243,66 @@ void TestPrecompiledHeaders::TestPCHWithCache_NoRebuild() const
     CheckStatsTotal( stats, 7+numF, 2+numF );
 }
 
+// TestPCHWithCache_BFFChange
+//------------------------------------------------------------------------------
+void TestPrecompiledHeaders::TestPCHWithCache_BFFChange() const
+{
+    #if defined( __OSX__ )
+        // HFS+ has surprisingly poor time resolution (1 second) which makes the
+        // ObjectListNode appear to not need rebuilding, because the tests complete
+        // so quickly. This work-around keeps our state consistent with other platforms
+        // (the actual thing we are primarily tests (the pchuser rebuild) is not impacted
+        // by this)
+        Thread::Sleep( 1100 );
+    #endif
+    
+    // Delete the object that uses the PCH, but not the PCH obj itself
+    // to ensure the object can be pulled from the cache after db migration
+    // With the MSVC compiler, this ensures the PCHCacheKey is not lost
+    #if defined( __WINDOWS__ )
+        const char * target = "../tmp/Test/PrecompiledHeaders/PCHUser.obj";
+    #else
+        const char * target = "../tmp/Test/PrecompiledHeaders/PCHUser.o";
+    #endif
+    EnsureFileExists( target );
+    EnsureFileDoesNotExist( target );
+
+    // Force migration
+    FBuildTestOptions options;
+    options.m_ForceDBMigration_Debug = true;
+    options.m_UseCacheRead = true;
+    FBuildStats stats = Build( options );
+
+    // Check stats
+    //                      Seen,   Built,  Type
+    uint32_t numF = 4; // pch.h / slow.h / pchuser.cpp / linker exe
+    #if defined( __WINDOWS__ )
+        numF++; // pch.cpp
+    #endif
+    CheckStatsNode ( stats, numF,   numF,   Node::FILE_NODE );  // cpp + pch cpp + pch .h
+    CheckStatsNode ( stats, 1,      1,      Node::COMPILER_NODE );
+    CheckStatsNode ( stats, 2,      0,      Node::OBJECT_NODE );// obj + pch obj
+    CheckStatsNode ( stats, 1,      1,      Node::OBJECT_LIST_NODE );
+    CheckStatsNode ( stats, 1,      1,      Node::DIRECTORY_LIST_NODE );
+    CheckStatsNode ( stats, 1,      1,      Node::ALIAS_NODE );
+    CheckStatsNode ( stats, 1,      1,      Node::EXE_NODE );
+    CheckStatsTotal( stats, 7+numF, 5+numF );
+
+    // Ensure the object was pulled from the cache
+    TEST_ASSERT( stats.GetStatsFor( Node::OBJECT_NODE ).m_NumCacheHits == 1 );
+}
+
 // PreventUselessCacheTraffic_MSVC
 //------------------------------------------------------------------------------
 void TestPrecompiledHeaders::PreventUselessCacheTraffic_MSVC() const
 {
     // Build the PCH locally, without going via the cache (no store, no hit)
     {
-        FBuildOptions options;
+        FBuildTestOptions options;
         options.m_ForceCleanBuild = true;
 
         const bool useDB = true;
-        const char * target = "../../../../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch";
+        const char * target = "../tmp/Test/PrecompiledHeaders/PrecompiledHeader.pch";
         FBuildStats stats = Build( options, useDB, target );
 
         // Ensure PCH was built, and not cached
@@ -239,7 +315,7 @@ void TestPrecompiledHeaders::PreventUselessCacheTraffic_MSVC() const
     // a) not retrieved (since they are incompatible with our locally made PCH)
     // b) not stored (no-one can ever use them, since we didn't store the PCH)
     {
-        FBuildOptions options;
+        FBuildTestOptions options;
         options.m_UseCacheRead = true;
         options.m_UseCacheWrite = true;
 
@@ -258,33 +334,32 @@ void TestPrecompiledHeaders::PreventUselessCacheTraffic_MSVC() const
 void TestPrecompiledHeaders::CacheUniqueness() const
 {
     // Two headers, differing only in unused defines
-    const char * pchA = "Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeaderA.h";
-    const char * pchB = "Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeaderB.h";
-    const char * dstPCH = "../../../../tmp/Test/PrecompiledHeaders/CacheUniqueness/PrecompiledHeader.h";
+    const char * pchA = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeaderA.h";
+    const char * pchB = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeaderB.h";
+    const char * dstPCH = "../tmp/Test/PrecompiledHeaders/CacheUniqueness/PrecompiledHeader.h";
     #if defined( __WINDOWS__ )
         // On windows we need a CPP to create the PCH
-        const char * pchCPP = "Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeader.cpp";
-        const char * dstPCHCPP = "../../../../tmp/Test/PrecompiledHeaders/CacheUniqueness/PrecompiledHeader.cpp";
+        const char * pchCPP = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness/PrecompiledHeader.cpp";
+        const char * dstPCHCPP = "../tmp/Test/PrecompiledHeaders/CacheUniqueness/PrecompiledHeader.cpp";
     #endif
-    const char * pchUser = "Data/TestPrecompiledHeaders/CacheUniqueness/PCHUser.cpp";
-    const char * dstPCHUser = "../../../../tmp/Test/PrecompiledHeaders/CacheUniqueness/PCHUser.cpp";
+    const char * pchUser = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness/PCHUser.cpp";
+    const char * dstPCHUser = "../tmp/Test/PrecompiledHeaders/CacheUniqueness/PCHUser.cpp";
 
     // Copy the files to the tmp Dir
-    TEST_ASSERT( FileIO::EnsurePathExists( AStackString<>( "../../../../tmp/Test/PrecompiledHeaders/CacheUniqueness/" ) ) );
+    TEST_ASSERT( FileIO::EnsurePathExists( AStackString<>( "../tmp/Test/PrecompiledHeaders/CacheUniqueness/" ) ) );
     TEST_ASSERT( FileIO::FileCopy( pchA, dstPCH ) );
     #if defined( __WINDOWS__ )
         TEST_ASSERT( FileIO::FileCopy( pchCPP, dstPCHCPP ) );
     #endif
     TEST_ASSERT( FileIO::FileCopy( pchUser, dstPCHUser ) );
 
-    FBuildOptions baseOptions;
-    baseOptions.m_ConfigFile = "Data/TestPrecompiledHeaders/CacheUniqueness/fbuild.bff";
+    FBuildTestOptions baseOptions;
+    baseOptions.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness/fbuild.bff";
     baseOptions.m_ForceCleanBuild = true;
-    baseOptions.m_ShowSummary = true; // required to generate stats for node count checks
 
     // Compile A
     {
-        FBuildOptions options( baseOptions );
+        FBuildTestOptions options( baseOptions );
         options.m_UseCacheWrite = true;
 
         FBuild fBuild( options );
@@ -303,7 +378,7 @@ void TestPrecompiledHeaders::CacheUniqueness() const
 
     // Compile B
     {
-        FBuildOptions options( baseOptions );
+        FBuildTestOptions options( baseOptions );
         options.m_UseCacheRead = true;
 
         FBuild fBuild( options );
@@ -326,16 +401,15 @@ void TestPrecompiledHeaders::CacheUniqueness2() const
     // is cached correctly in both
 
     // Initialize
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestPrecompiledHeaders/CacheUniqueness2/fbuild.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheUniqueness2/fbuild.bff";
     options.m_ForceCleanBuild = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
 
     AStackString<> target( "PCHTest-CacheUniqueness2" );
 
     // Write to cache
     {
-        FBuildOptions optionsCopy( options );
+        FBuildTestOptions optionsCopy( options );
         optionsCopy.m_UseCacheWrite = true;
         FBuild fBuild( optionsCopy );
         TEST_ASSERT( fBuild.Initialize( nullptr ) );
@@ -349,7 +423,7 @@ void TestPrecompiledHeaders::CacheUniqueness2() const
 
     // Read from cache
     {
-        FBuildOptions optionsCopy( options );
+        FBuildTestOptions optionsCopy( options );
         optionsCopy.m_UseCacheRead = true;
         FBuild fBuild( optionsCopy );
         TEST_ASSERT( fBuild.Initialize( nullptr ) );
@@ -367,23 +441,22 @@ void TestPrecompiledHeaders::CacheUniqueness2() const
 void TestPrecompiledHeaders::Deoptimization() const
 {
     // Initialize
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestPrecompiledHeaders/Deoptimization/fbuild.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/Deoptimization/fbuild.bff";
     options.m_ForceCleanBuild = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
 
     FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize( nullptr ) );
 
     // Copy files to temp dir
-    TEST_ASSERT( FileIO::EnsurePathExists( AStackString<>( "../../../../tmp/Test/PrecompiledHeaders/Deoptimization/" ) ) );
-    TEST_ASSERT( FileIO::FileCopy( "Data/TestPrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp", "../../../../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp" ) );
-    TEST_ASSERT( FileIO::FileCopy( "Data/TestPrecompiledHeaders/Deoptimization/PrecompiledHeader.h", "../../../../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.h" ) );
+    TEST_ASSERT( FileIO::EnsurePathExists( AStackString<>( "../tmp/Test/PrecompiledHeaders/Deoptimization/" ) ) );
+    TEST_ASSERT( FileIO::FileCopy( "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp", "../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp" ) );
+    TEST_ASSERT( FileIO::FileCopy( "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/Deoptimization/PrecompiledHeader.h", "../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.h" ) );
 
     // Mark copied files as writable, which normally activates deoptimization (since we have it enabled)
     // It should be ignored for the precompiled header (which is what we are testing)
-    TEST_ASSERT( FileIO::SetReadOnly( "../../../../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp", false ) );
-    TEST_ASSERT( FileIO::SetReadOnly( "../../../../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.h", false ) );
+    TEST_ASSERT( FileIO::SetReadOnly( "../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.cpp", false ) );
+    TEST_ASSERT( FileIO::SetReadOnly( "../tmp/Test/PrecompiledHeaders/Deoptimization/PrecompiledHeader.h", false ) );
 
     AStackString<> target( "PCHTest-Deoptimization" );
 
@@ -402,37 +475,36 @@ void TestPrecompiledHeaders::Deoptimization() const
 void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
 {
     // Initialize
-    FBuildOptions options;
-    options.m_ConfigFile = "Data/TestPrecompiledHeaders/CacheAnalyze_MSVC/fbuild.bff";
+    FBuildTestOptions options;
+    options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/CacheAnalyze_MSVC/fbuild.bff";
     options.m_ForceCleanBuild = true;
-    options.m_ShowSummary = true; // required to generate stats for node count checks
 
     AStackString<> target( "PCHTest-CacheAnalyze_MSVC" );
-    const char * pchFile1 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch";
-    const char * pchFile2 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch";
-    const char * pchOBJFile1 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch.obj";
-    const char * pchOBJFile2 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch.obj";
-    const char * pchASTFile1 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pchast";
-    const char * pchASTFile2 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pchast";
-    const char * pchXMLFile1 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch.nativecodeanalysis.xml";
-    const char * pchXMLFile2 = "../../../../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch.nativecodeanalysis.xml";
-
-    // Delete pch and related files (if left from an old build)
-    FileIO::FileDelete( pchFile1 );
-    FileIO::FileDelete( pchFile2 );
-    FileIO::FileDelete( pchOBJFile1 );
-    FileIO::FileDelete( pchOBJFile2 );
-    FileIO::FileDelete( pchASTFile1 );
-    FileIO::FileDelete( pchASTFile2 );
-    FileIO::FileDelete( pchXMLFile1 );
-    FileIO::FileDelete( pchXMLFile2 );
+    const char * pchFile1 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch";
+    const char * pchFile2 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch";
+    const char * pchOBJFile1 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch.obj";
+    const char * pchOBJFile2 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch.obj";
+    const char * pchASTFile1 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pchast";
+    const char * pchASTFile2 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pchast";
+    const char * pchXMLFile1 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/1/PrecompiledHeader.pch.nativecodeanalysis.xml";
+    const char * pchXMLFile2 = "../tmp/Test/PrecompiledHeaders/CacheAnalyze_MSVC/2/PrecompiledHeader.pch.nativecodeanalysis.xml";
 
     // Write to cache
     {
-        FBuildOptions optionsCopy( options );
+        FBuildTestOptions optionsCopy( options );
         optionsCopy.m_UseCacheWrite = true;
         FBuild fBuild( optionsCopy );
         TEST_ASSERT( fBuild.Initialize( nullptr ) );
+
+        // Delete pch and related files (if left from an old build)
+        FileIO::FileDelete( pchFile1 );
+        FileIO::FileDelete( pchFile2 );
+        FileIO::FileDelete( pchOBJFile1 );
+        FileIO::FileDelete( pchOBJFile2 );
+        FileIO::FileDelete( pchASTFile1 );
+        FileIO::FileDelete( pchASTFile2 );
+        FileIO::FileDelete( pchXMLFile1 );
+        FileIO::FileDelete( pchXMLFile2 );
 
         TEST_ASSERT( fBuild.Build( target ) );
 
@@ -449,21 +521,21 @@ void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
         TEST_ASSERT( FileIO::FileExists( pchASTFile2 ) );
         TEST_ASSERT( FileIO::FileExists( pchXMLFile1 ) );
         TEST_ASSERT( FileIO::FileExists( pchXMLFile2 ) );
-    }
 
-    // Delete pch and related files
-    TEST_ASSERT( FileIO::FileDelete( pchFile1 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchFile2 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchOBJFile1 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchOBJFile2 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchASTFile1 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchASTFile2 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchXMLFile1 ) );
-    TEST_ASSERT( FileIO::FileDelete( pchXMLFile2 ) );
+        // Delete pch and related files
+        TEST_ASSERT( FileIO::FileDelete( pchFile1 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchFile2 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchOBJFile1 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchOBJFile2 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchASTFile1 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchASTFile2 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchXMLFile1 ) );
+        TEST_ASSERT( FileIO::FileDelete( pchXMLFile2 ) );
+    }
 
     // Read from cache
     {
-        FBuildOptions optionsCopy( options );
+        FBuildTestOptions optionsCopy( options );
         optionsCopy.m_UseCacheRead = true;
         FBuild fBuild( optionsCopy );
         TEST_ASSERT( fBuild.Initialize( nullptr ) );
@@ -491,14 +563,13 @@ void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
 #if defined( __WINDOWS__ )
     void TestPrecompiledHeaders::TestPCHClangWindows() const
     {
-        FBuildOptions options;
-        options.m_ConfigFile = "Data/TestPrecompiledHeaders/fbuild.bff";
+        FBuildTestOptions options;
+        options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/fbuild.bff";
         options.m_ForceCleanBuild = true;
         options.m_UseCacheWrite = true;
-        options.m_ShowSummary = true; // required to generate stats for node count checks
 
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
         EnsureFileDoesNotExist( obj );
         EnsureFileDoesNotExist( pch );
 
@@ -531,12 +602,11 @@ void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
 #if defined( __WINDOWS__ )
     void TestPrecompiledHeaders::TestPCHClangWindows_NoRebuild() const
     {
-        FBuildOptions options;
-        options.m_ConfigFile = "Data/TestPrecompiledHeaders/fbuild.bff";
-        options.m_ShowSummary = true; // required to generate stats for node count checks
+        FBuildTestOptions options;
+        options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/fbuild.bff";
 
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
 
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( GetPCHDBClangFileName() ) );
@@ -561,14 +631,13 @@ void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
 #if defined( __WINDOWS__ )
     void TestPrecompiledHeaders::TestPCHClangWindowsWithCache() const
     {
-        FBuildOptions options;
-        options.m_ConfigFile = "Data/TestPrecompiledHeaders/fbuild.bff";
+        FBuildTestOptions options;
+        options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/fbuild.bff";
         options.m_ForceCleanBuild = true;
         options.m_UseCacheRead = true;
-        options.m_ShowSummary = true; // required to generate stats for node count checks
 
-        AStackString<> obj( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
-        AStackString<> pch( "../../../../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
+        AStackString<> obj( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PCHUser.obj" );
+        AStackString<> pch( "../tmp/Test/PrecompiledHeaders/Clang-Windows/PrecompiledHeader.pch" );
         EnsureFileDoesNotExist( obj );
         EnsureFileDoesNotExist( pch );
 
@@ -601,9 +670,8 @@ void TestPrecompiledHeaders::PrecompiledHeaderCacheAnalyze_MSVC() const
 #if defined( __WINDOWS__ )
     void TestPrecompiledHeaders::TestPCHClangWindowsWithCache_NoRebuild() const
     {
-        FBuildOptions options;
-        options.m_ConfigFile = "Data/TestPrecompiledHeaders/fbuild.bff";
-        options.m_ShowSummary = true; // required to generate stats for node count checks
+        FBuildTestOptions options;
+        options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestPrecompiledHeaders/fbuild.bff";
 
         FBuild fBuild( options );
         TEST_ASSERT( fBuild.Initialize( GetPCHDBClangFileName() ) );

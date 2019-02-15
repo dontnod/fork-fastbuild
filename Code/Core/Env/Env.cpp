@@ -11,7 +11,8 @@
 #include "Core/Strings/AStackString.h"
 
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Lmcons.h>
+    #include <Windows.h>
     #include <stdio.h>
 #endif
 
@@ -84,7 +85,7 @@
 
             for ( size_t processorID = 0; processorID < maxLogicalProcessorsInThisGroup; ++processorID )
             {
-                numProcessorsInThisGroup += ( ( groupProcessorMask.Mask & ( 1i64 << processorID ) ) != 0 ) ? 1 : 0;
+                numProcessorsInThisGroup += ( ( groupProcessorMask.Mask & ( uint64_t(1) << processorID ) ) != 0 ) ? 1 : 0;
             }
 
             numProcessorsInAllGroups += numProcessorsInThisGroup;
@@ -226,6 +227,113 @@ void Env::GetExePath( AString & output )
         ASSERT( length <= PATH_MAX );
         output.Assign( path, path + length );
     #endif
+}
+
+// IsStdOutRedirectedInternal
+//------------------------------------------------------------------------------
+static bool IsStdOutRedirectedInternal()
+{
+    #if defined( __WINDOWS__ )
+        HANDLE h = GetStdHandle( STD_OUTPUT_HANDLE );
+        ASSERT( h != INVALID_HANDLE_VALUE );
+        if ( h == nullptr )
+        {
+            return true; // There is no handle associated with stdout, this is essentially a redirection to NUL
+        }
+
+        // Check if the handle belongs to a console window
+        DWORD unused;
+        if ( GetConsoleMode( h, (LPDWORD)&unused ) )
+        {
+            return false; // Console window exists, so there is no redirection
+        }
+
+        // Check if the handle belongs to a pipe used by Cygwin/MSYS to forward output to a terminal
+        if ( GetFileType( h ) != FILE_TYPE_PIPE )
+        {
+            return true; // Redirected to something that is not a pipe
+        }
+
+        char buffer[ sizeof( FILE_NAME_INFO ) + MAX_PATH * sizeof( wchar_t ) ];
+        if ( ! GetFileInformationByHandleEx( h, FileNameInfo, buffer, sizeof( buffer ) ) )
+        {
+            return true; // Redirected to something that doesn't have a name
+        }
+
+        FILE_NAME_INFO * info = reinterpret_cast< FILE_NAME_INFO * >( buffer );
+        info->FileName[ info->FileNameLength / sizeof( wchar_t ) ] = L'\0';
+
+        // Check if name of the pipe matches pattern "\cygwin-%llx-pty%d-to-master" or "\msys-%llx-pty%d-to-master"
+        const wchar_t * p = nullptr;
+        if ( ( p = wcsstr( info->FileName, L"\\cygwin-" ) ) != nullptr )
+        {
+            p += 7;
+        }
+        else if ( ( p = wcsstr( info->FileName, L"\\msys-" ) ) != nullptr )
+        {
+            p += 5;
+        }
+        else
+        {
+            return true; // Redirected to a pipe that is not related to Cygwin/MSYS
+        }
+        int nChars = 0;
+        PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
+        if ( ( swscanf( p, L"%*llx-pty%*d-to-master%n", &nChars ) == 0 ) && ( nChars > 0 ) ) // TODO:C Consider using swscanf_s
+        PRAGMA_DISABLE_POP_MSVC // 4996
+        {
+            return false; // Pipe name matches the pattern, stdout is forwarded to a terminal by Cygwin/MSYS
+        }
+
+        return true;
+    #elif defined( __LINUX__ ) || defined( __APPLE__ )
+        return ( isatty( STDOUT_FILENO ) == 0 );
+    #else
+        #error Unknown platform
+    #endif
+}
+
+// GetUserName
+//------------------------------------------------------------------------------
+/*static*/ bool Env::GetLocalUserName( AString & outUserName )
+{
+    #if defined( __WINDOWS__ )
+        char userName[ UNLEN + 1 ];
+        DWORD bufferSize = sizeof(userName);
+        if ( ::GetUserNameA( userName, &bufferSize ) == FALSE )
+        {
+            return false;
+        }
+        outUserName = userName;
+        return true;
+    #else
+        return GetEnvVariable( "USER", outUserName );
+    #endif
+}
+
+// IsStdOutRedirected
+//------------------------------------------------------------------------------
+/*static*/ bool Env::IsStdOutRedirected( const bool recheck )
+{
+    static volatile int32_t sCachedResult = 0; // 0 - not checked, 1 - true, 2 - false
+    const int32_t result = sCachedResult;
+    if ( recheck || ( result == 0 ) )
+    {
+        if ( IsStdOutRedirectedInternal() )
+        {
+            sCachedResult = 1;
+            return true;
+        }
+        else
+        {
+            sCachedResult = 2;
+            return false;
+        }
+    }
+    else
+    {
+        return ( result == 1 );
+    }
 }
 
 // GetLastErr

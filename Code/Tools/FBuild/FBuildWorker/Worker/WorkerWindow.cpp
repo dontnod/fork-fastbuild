@@ -38,9 +38,7 @@
 
 // Defines
 //------------------------------------------------------------------------------
-#define ID_TRAY_APP_ICON                5000
 #define ID_TRAY_EXIT_CONTEXT_MENU_ITEM  3000
-
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
@@ -48,8 +46,16 @@ WorkerWindow::WorkerWindow( void * hInstance )
     : OSWindow( hInstance )
     , m_UIState( NOT_READY )
     , m_UIThreadHandle( INVALID_THREAD_HANDLE )
+    , m_TrayIcon( nullptr )
+    , m_Font( nullptr )
+    , m_ModeLabel( nullptr )
+    , m_ResourcesLabel( nullptr )
+    , m_ThreadList( nullptr )
+    , m_ModeDropDown( nullptr )
+    , m_ResourcesDropDown( nullptr )
     #if defined( __WINDOWS__ )
         , m_Menu( nullptr )
+        , m_Splitter( nullptr )
     #endif
 {
     // obtain host name
@@ -74,15 +80,7 @@ WorkerWindow::~WorkerWindow()
     ASSERT( m_UIState == ALLOWED_TO_QUIT );
 
     // ensure the thread is shutdown
-    #if defined( __WINDOWS__ )
-        VERIFY( WaitForSingleObject( m_UIThreadHandle, INFINITE ) == WAIT_OBJECT_0 );
-    #elif defined( __APPLE__ )
-        // TODO:MAC WaitForSingleObject equivalent
-    #elif defined( __LINUX__ )
-        // TODO:LINUX WaitForSingleObject equivalent
-    #else
-        #error Unknown Platform
-    #endif
+    Thread::WaitForThread( m_UIThreadHandle );
 
     // clean up the ui thread
     Thread::CloseHandle( m_UIThreadHandle );
@@ -93,7 +91,7 @@ WorkerWindow::~WorkerWindow()
 void WorkerWindow::SetStatus( const char * statusText )
 {
     AStackString< 512 > text;
-    text.Format( "FBuildWorker %s (%s) | \"%s\" | %s", FBUILD_VERSION_STRING, FBUILD_VERSION_PLATFORM, m_HostName.Get(), statusText );
+    text.Format( "FBuildWorker %s | \"%s\" | %s", FBUILD_VERSION_STRING, m_HostName.Get(), statusText );
     SetTitle( text.Get() );
 }
 
@@ -127,7 +125,9 @@ void WorkerWindow::UIUpdateThread()
         Init( x, y, w, h );
 
         // Create the tray icon
-        m_TrayIcon = FNEW( OSTrayIcon( this ) );
+        AStackString<> toolTip;
+        toolTip.Format( "FBuildWorker %s", FBUILD_VERSION_STRING );
+        m_TrayIcon = FNEW( OSTrayIcon( this, toolTip ) );
 
         // init windows common controls
         INITCOMMONCONTROLSEX icex; // Structure for control initialization.
@@ -182,7 +182,7 @@ void WorkerWindow::UIUpdateThread()
             for ( uint32_t i=0; i<numProcessors; ++i )
             {
                 float perc = ( i == ( numProcessors - 1 ) ) ? 100.0f : ( (float)( i + 1 ) / (float)numProcessors ) * 100.0f;
-                buffer.Format( "%i CPUs (%2.1f%%)", ( i + 1 ), perc );
+                buffer.Format( "%i CPUs (%2.1f%%)", ( i + 1 ), (double)perc );
                 m_ResourcesDropDown->AddItem( buffer.Get() );
             }
         }
@@ -206,14 +206,17 @@ void WorkerWindow::UIUpdateThread()
         m_Menu = CreatePopupMenu();
         AppendMenu( m_Menu, MF_STRING, ID_TRAY_EXIT_CONTEXT_MENU_ITEM, TEXT( "Exit" ) );
 
-        // Display the window, and minimize it
-        // - we do this so the user can see the application has run
-        ShowWindow( (HWND)GetHandle(), SW_SHOW );
-        UpdateWindow( (HWND)GetHandle() );
-        ShowWindow( (HWND)GetHandle(), SW_SHOW ); // First call can be ignored
+        // Display the window and minimize it if needed
         if ( WorkerSettings::Get().GetStartMinimzed() )
         {
+            UpdateWindow( (HWND)GetHandle() );
             ToggleMinimized(); // minimze
+        }
+        else
+        {
+            ShowWindow( (HWND)GetHandle(), SW_SHOWNOACTIVATE );
+            UpdateWindow( (HWND)GetHandle() );
+            ShowWindow( (HWND)GetHandle(), SW_SHOWNOACTIVATE ); // First call can be ignored
         }
 
         SetStatus( "Idle" );
@@ -279,6 +282,13 @@ void WorkerWindow::UIUpdateThread()
     return true; // Stop window closeing (since we already handled it)
 }
 
+// OnQuit
+//------------------------------------------------------------------------------
+/*virtual*/ bool WorkerWindow::OnQuit()
+{
+    SetWantToQuit();
+    return true; // Handled
+}
 
 // OnTrayIconLeftClick
 //------------------------------------------------------------------------------
@@ -341,9 +351,6 @@ void WorkerWindow::ToggleMinimized()
         {
             // hide the main window
             ShowWindow( (HWND)GetHandle(), SW_HIDE );
-
-            // balloon
-            m_TrayIcon->ShowNotification( "FBuildWorker minimized to tray." );
         }
         else
         {

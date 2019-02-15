@@ -61,7 +61,6 @@ FBuild::FBuild( const FBuildOptions & options )
     , m_JobQueue( nullptr )
     , m_Client( nullptr )
     , m_Cache( nullptr )
-    , m_Settings( nullptr )
     , m_LastProgressOutputTime( 0.0f )
     , m_LastProgressCalcTime( 0.0f )
     , m_SmoothedProgressCurrent( 0.0f )
@@ -157,7 +156,7 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
 
     SmallBlockAllocator::SetSingleThreadedMode( true );
 
-    m_DependencyGraph = NodeGraph::Initialize( bffFile, m_DependencyGraphFile.Get() );
+    m_DependencyGraph = NodeGraph::Initialize( bffFile, m_DependencyGraphFile.Get(), m_Options.m_ForceDBMigration_Debug );
 
     SmallBlockAllocator::SetSingleThreadedMode( false );
 
@@ -166,24 +165,21 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
         return false;
     }
 
-    // Store a pointer to the SettingsNode as defined by the BFF, or create a
-    // default instance if needed.
-    const Node * settingsNode = m_DependencyGraph->FindNode( AStackString<>( "$$Settings$$" ) );
-    m_Settings = settingsNode ? settingsNode->CastTo< SettingsNode >() : m_DependencyGraph->CreateSettingsNode( AStackString<>( "$$Settings$$" ) ); // Create a default
+    const SettingsNode * settings = m_DependencyGraph->GetSettings();
 
     // if the cache is enabled, make sure the path is set and accessible
     if ( m_Options.m_UseCacheRead || m_Options.m_UseCacheWrite || m_Options.m_CacheInfo || m_Options.m_CacheTrim )
     {
-        if ( !m_Settings->GetCachePluginDLL().IsEmpty() )
+        if ( !settings->GetCachePluginDLL().IsEmpty() )
         {
-            m_Cache = FNEW( CachePlugin( m_Settings->GetCachePluginDLL() ) );
+            m_Cache = FNEW( CachePlugin( settings->GetCachePluginDLL() ) );
         }
         else
         {
             m_Cache = FNEW( Cache() );
         }
 
-        if ( m_Cache->Init( m_Settings->GetCachePath() ) == false )
+        if ( m_Cache->Init( settings->GetCachePath(), settings->GetCachePathMountPoint() ) == false )
         {
             m_Options.m_UseCacheRead = false;
             m_Options.m_UseCacheWrite = false;
@@ -197,7 +193,7 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
     if ( m_Options.m_AllowDistributed )
     {
         Array< AString > workers;
-        if ( m_Settings->GetWorkerList().IsEmpty() )
+        if ( settings->GetWorkerList().IsEmpty() )
         {
             // check for workers through brokerage
             // TODO:C This could be moved out of the main code path
@@ -205,7 +201,7 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
         }
         else
         {
-            workers = m_Settings->GetWorkerList();
+            workers = settings->GetWorkerList();
         }
 
         if ( workers.IsEmpty() )
@@ -215,8 +211,8 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
         }
         else
         {
-            OUTPUT( "Distributed Compilation : %u Workers in pool\n", (uint32_t)workers.GetSize() );
-            m_Client = FNEW( Client( workers, m_Options.m_DistributionPort, m_Settings->GetWorkerConnectionLimit(), m_Options.m_DistVerbose ) );
+            OUTPUT( "Distributed Compilation : %u Workers in pool '%s'\n", (uint32_t)workers.GetSize(), m_WorkerBrokerage.GetBrokerageRoot().Get() );
+            m_Client = FNEW( Client( workers, m_Options.m_DistributionPort, settings->GetWorkerConnectionLimit(), m_Options.m_DistVerbose ) );
         }
     }
 
@@ -363,7 +359,7 @@ bool FBuild::SaveDependencyGraph( const char * nodeGraphDBFile ) const
         return false;
     }
 
-    FLOG_INFO( "Saving DepGraph Complete in %2.3fs", t.GetElapsed() );
+    FLOG_INFO( "Saving DepGraph Complete in %2.3fs", (double)t.GetElapsed() );
     return true;
 }
 
@@ -767,7 +763,7 @@ void FBuild::UpdateBuildStatus( const Node * node )
         FLog::OutputProgress( timeNow, m_SmoothedProgressCurrent, numJobs, numJobsActive, numJobsDist, numJobsDistActive );
     }
 
-    FLOG_MONITOR( "PROGRESS_STATUS %f \n", m_SmoothedProgressCurrent );
+    FLOG_MONITOR( "PROGRESS_STATUS %f \n", (double)m_SmoothedProgressCurrent );
 
     m_LastProgressOutputTime = timeNow;
 }
@@ -777,17 +773,6 @@ void FBuild::UpdateBuildStatus( const Node * node )
 /*static*/ const char * FBuild::GetDefaultBFFFileName()
 {
     return "fbuild.bff";
-}
-
-// GetCacheFileName
-//------------------------------------------------------------------------------
-void FBuild::GetCacheFileName( uint64_t keyA, uint32_t keyB, uint64_t keyC, uint64_t keyD, AString & path ) const
-{
-    // cache version - bump if cache format is changed
-    static const int cacheVersion( 9 );
-
-    // format example: 2377DE32AB045A2D_FED872A1_AB62FEAA23498AAC-32A2B04375A2D7DE.7
-    path.Format( "%016" PRIX64 "_%08X_%016" PRIX64 "-%016" PRIX64 ".%u", keyA, keyB, keyC, keyD, cacheVersion );
 }
 
 // DisplayTargetList
@@ -854,29 +839,31 @@ bool FBuild::DisplayDependencyDB( const Array< AString > & targets ) const
 //------------------------------------------------------------------------------
 /*static*/ bool FBuild::GetTempDir( AString & outTempDir )
 {
-    #if defined( __WINDOWS__ )
+    #if defined( __WINDOWS__ ) || defined( __LINUX__ ) || defined( __APPLE__ )
         // Check for override environment variable
         if ( Env::GetEnvVariable( "FASTBUILD_TEMP_PATH", outTempDir ) )
         {
             // Ensure env var was slash terminated
-            const bool slashTerminated = ( outTempDir.EndsWith( '/' ) || outTempDir.EndsWith( '\\' ) );
-            if ( !slashTerminated )
-            {
-                outTempDir += '\\';
-            }
+            #if defined( __WINDOWS__ )
+                const bool slashTerminated = ( outTempDir.EndsWith( '/' ) || outTempDir.EndsWith( '\\' ) );
+                if ( !slashTerminated )
+                {
+                    outTempDir += '\\';
+                }
+            #else
+                const bool slashTerminated = outTempDir.EndsWith( '/' );
+                if ( !slashTerminated )
+                {
+                    outTempDir += '/';
+                }
+            #endif
 
             return true;
         }
-
-        // Use regular system temp path
-        return FileIO::GetTempDir( outTempDir );
-    #elif defined( __LINUX__ ) || defined( __APPLE__ )
-        outTempDir = "/tmp/";
-        return true;
-    #else
-        #error Unknown platform
-        return false;
     #endif
+
+    // Use regular system temp path
+    return FileIO::GetTempDir( outTempDir );
 }
 
 // CacheOutputInfo
