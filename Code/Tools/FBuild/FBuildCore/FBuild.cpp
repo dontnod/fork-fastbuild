@@ -47,7 +47,7 @@
     #include <crtdbg.h>
 #endif
 
-#include <cctype>
+#include <ctype.h>
 
 // Static
 //------------------------------------------------------------------------------
@@ -613,7 +613,7 @@ static bool BufferForHashEqual( char lhs, char rhs )
     return ( ( lhs == rhs ) ||
              ( lhs == '/' && rhs == '\\' ) ||
              ( lhs == '\\' && rhs == '/' ) ||
-             ( std::tolower(lhs) == std::tolower(rhs) ) );
+             ( tolower(lhs) == tolower(rhs) ) );
 }
 
 // Make hash functions path agnostic :
