@@ -4,15 +4,6 @@
     .ProjectName        = 'TestFramework'
     .ProjectPath        = 'TestFramework'
 
-    // Unity
-    //--------------------------------------------------------------------------
-    Unity( '$ProjectName$-Unity' )
-    {
-        // Common options
-        .UnityInputPath             = '$ProjectPath$\'
-        .UnityOutputPath            = '$UnityOutputBase$\$ProjectPath$\'
-    }
-
     // Library
     //--------------------------------------------------------------------------
     ForEach( .Config in .Configs )
@@ -20,20 +11,30 @@
         Using( .Config )
         .OutputBase + '\$Platform$-$Config$'
 
-        // Static Library
+        // Unity
+        //--------------------------------------------------------------------------
+        Unity( '$ProjectName$-Unity-$Platform$-$Config$' )
+        {
+            .UnityInputPath             = '$ProjectPath$/'
+            .UnityOutputPath            = '$OutputBase$/$ProjectPath$/'
+        }
+
+        // Library
+        //--------------------------------------------------------------------------
         Library( '$ProjectName$-Lib-$Platform$-$Config$' )
         {
             // Test framework uses exceptions
             .CompilerOptions            + .UseExceptions
 
             // Input (Unity)
-            .CompilerInputUnity         = '$ProjectName$-Unity'
+            .CompilerInputUnity         = '$ProjectName$-Unity-$Platform$-$Config$'
 
             // Output
-            .CompilerOutputPath         = '$OutputBase$\$ProjectName$\'
-            .LibrarianOutput            = '$OutputBase$/$ProjectName$/$ProjectName$$LibExtension$'
+            .CompilerOutputPath         = '$OutputBase$/$ProjectPath$/'
+            .LibrarianOutput            = '$OutputBase$/$ProjectPath$/$ProjectName$$LibExtension$'
         }
         Alias( '$ProjectName$-$Platform$-$Config$' ) { .Targets = '$ProjectName$-Lib-$Platform$-$Config$' }
+        ^'Targets_$Platform$_$Config$' + { '$ProjectName$-$Platform$-$Config$' }
     }
 
     // Aliases
@@ -68,9 +69,9 @@
             .ProjectOutput              = '../tmp/XCode/Projects/1_Test/$ProjectName$.xcodeproj/project.pbxproj'
             .ProjectInputPaths          = '$ProjectPath$/'
             .ProjectBasePath            = '$ProjectPath$/'
-    
+
             .XCodeBuildWorkingDir       = '../../../../Code/'
-    
+
             .ProjectOSXDebug        = [ .Config = 'Debug'   .Target = '$ProjectName$-x64OSX-Debug' ]
             .ProjectOSXProfile      = [ .Config = 'Profile' .Target = '$ProjectName$-x64OSX-Profile' ]
             .ProjectOSXRelease      = [ .Config = 'Release' .Target = '$ProjectName$-x64OSX-Release' ]

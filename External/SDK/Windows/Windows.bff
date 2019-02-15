@@ -38,7 +38,7 @@
 //--------------------------------------------------------------------------
 {
     // Common
-    .ProjectBasePath                = '../External/SDK/Windows/'
+    .ProjectBasePath                = '$_CURRENT_BFF_DIR_$/'
     .ProjectInputPaths              = .ProjectBasePath
     .ProjectAllowedFileExtensions   = '*.bff'
 
@@ -46,7 +46,7 @@
         // Visual Studio
         VCXProject( 'Windows-proj' )
         {
-            .ProjectOutput                  = '../tmp/VisualStudio/Projects/Windows.vcxproj'
+            .ProjectOutput                  = '$_CURRENT_BFF_DIR_$/../../../tmp/VisualStudio/Projects/Windows.vcxproj'
             .PlatformToolset                = .VS_PlatformToolset
     
             .ProjectX64Debug                = [ .Platform = 'x64' .Config = 'x64-Debug' ]

@@ -37,9 +37,13 @@ ProjectGeneratorBase::ProjectGeneratorBase()
 //------------------------------------------------------------------------------
 ProjectGeneratorBase::~ProjectGeneratorBase() = default;
 
-// GetProjectRelativePath
+// GetProjectRelativePath_Deprecated
 //------------------------------------------------------------------------------
-void ProjectGeneratorBase::GetProjectRelativePath( const AString & fileName, AString & shortFileName ) const
+//
+// This function assumes that projects are in sub-directories relative to the base path
+// which isn't always the case
+//
+void ProjectGeneratorBase::GetProjectRelativePath_Deprecated( const AString & fileName, AString & shortFileName ) const
 {
     // Find the best (longest) matching Base Path
     const AString * bestPath = &AString::GetEmpty();
@@ -103,7 +107,7 @@ void ProjectGeneratorBase::AddFile( const AString & fileName )
 {
     // Handle BasePath
     AStackString<> shortFileName;
-    GetProjectRelativePath( fileName, shortFileName );
+    GetProjectRelativePath_Deprecated( fileName, shortFileName );
 
     // Find existing folder
     const uint32_t folderIndex = GetFolderIndexFor( shortFileName );
@@ -200,6 +204,26 @@ void ProjectGeneratorBase::AddConfig( const AString & name, const Node * targetN
         return true; // nothing to do.
     }
 
+    return WriteToDisk( generatorId, content, fileName ); // WriteToDisk will emit error if needed
+}
+
+// WriteIfMissing
+//------------------------------------------------------------------------------
+/*static*/ bool ProjectGeneratorBase::WriteIfMissing( const char * generatorId, const AString & content, const AString & fileName )
+{
+    // Do nothing if the file already exists
+    if ( FileIO::FileExists( fileName.Get() ) )
+    {
+        return true;
+    }
+
+    return WriteToDisk( generatorId, content, fileName ); // WriteToDisk will emit error if needed
+}
+
+// WriteToDisk
+//------------------------------------------------------------------------------
+/*static*/ bool ProjectGeneratorBase::WriteToDisk( const char * generatorId, const AString & content, const AString & fileName )
+{
     FLOG_BUILD( "%s: %s\n", generatorId, fileName.Get() );
 
     // ensure path exists (normally handled by framework, but Projects
@@ -343,7 +367,8 @@ void ProjectGeneratorBase::AddConfig( const AString & name, const Node * targetN
                                                                   const char * option,
                                                                   const char * alternateOption,
                                                                   Array< AString > & outOptions,
-                                                                  bool escapeQuotes )
+                                                                  bool escapeQuotes,
+                                                                  bool keepFullOption )
 {
     ASSERT( option );
     Array< AString > tokens;
@@ -378,13 +403,27 @@ void ProjectGeneratorBase::AddConfig( const AString & name, const Node * targetN
         }
         else if ( token.BeginsWith( option ) )
         {
-            // use everything after token
-            optionBody.Assign( token.Get() + optionLen );
+            if ( keepFullOption )
+            {
+                optionBody = token;
+            }
+            else
+            {
+                // use everything after token
+                optionBody.Assign( token.Get() + optionLen );
+            }
         }
         else if ( alternateOption && token.BeginsWith( alternateOption ) )
         {
-            // use everything after token
-            optionBody.Assign( token.Get() + alternateOptionLen );
+            if ( keepFullOption )
+            {
+                optionBody = token;
+            }
+            else
+            {
+                // use everything after token
+                optionBody.Assign( token.Get() + alternateOptionLen );
+            }
         }
 
         // Strip quotes around body (e.g. -I"Folder/Folder")
@@ -424,6 +463,26 @@ void ProjectGeneratorBase::AddConfig( const AString & name, const Node * targetN
             outTokenString += postToken;
         }
     }
+}
+
+// GetRelativePath
+//------------------------------------------------------------------------------
+/*static*/ void ProjectGeneratorBase::GetRelativePath( const AString & basePath,
+                                                       const AString & fileName,
+                                                       AString & outRelativeFileName )
+{
+    AStackString<> cleanFileName;
+    #if !defined( __WINDOWS__ )
+        // Normally we keep all paths with native slashes, but in this case we
+        // have windows slashes, so convert to native for the relative check
+        AStackString<> pathCopy( fileName );
+        pathCopy.Replace( '\\', '/' );
+        NodeGraph::CleanPath( pathCopy, cleanFileName );
+    #else
+        NodeGraph::CleanPath( fileName, cleanFileName );
+    #endif
+
+    PathUtils::GetRelativePath( basePath, cleanFileName, outRelativeFileName );
 }
 
 //------------------------------------------------------------------------------

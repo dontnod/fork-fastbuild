@@ -13,13 +13,12 @@ class FunctionLibrary : public FunctionObjectList
 {
 public:
     explicit        FunctionLibrary();
-    inline virtual ~FunctionLibrary() = default;
+    inline virtual ~FunctionLibrary() override = default;
 
 protected:
     virtual bool AcceptsHeader() const override;
     virtual bool NeedsHeader() const override;
-
-    virtual bool Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const override;
+    virtual Node * CreateNode() const override;
 };
 
 //------------------------------------------------------------------------------

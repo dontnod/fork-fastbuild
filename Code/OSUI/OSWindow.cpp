@@ -40,6 +40,7 @@
                         {
                             return 0; // Handled
                         }
+                        break;
                     }
                     case SC_CLOSE:
                     {
@@ -47,6 +48,7 @@
                         {
                             return 0; // Handled
                         }
+                        break;
                     }
                 }
                 break;
@@ -77,6 +79,15 @@
                     window->OnDropDownSelectionChanged( dropDown );
                     return 0;
                 }
+                break;
+            }
+            case WM_QUIT:
+            {
+                if ( window->OnQuit() )
+                {
+                    return 0; // Handled
+                }
+                break;
             }
             default:
             {
@@ -123,7 +134,7 @@ void OSWindow::Init( int32_t x, int32_t y, uint32_t w, uint32_t h )
 
         // Register Window class
         AStackString<> uniqueWindowClass;
-        uniqueWindowClass.Format( "windowClass_%p", this );
+        uniqueWindowClass.Format( "windowClass_%p", (void *)this );
 
         WNDCLASSEX wc;
         wc.cbSize           = sizeof(WNDCLASSEX);
@@ -155,7 +166,7 @@ void OSWindow::Init( int32_t x, int32_t y, uint32_t w, uint32_t h )
         // Set user data
         SetWindowLongPtr( (HWND)m_Handle, GWLP_USERDATA, (LONG_PTR)this );
         // User data doesn't take effect until you call SetWindowPos
-        VERIFY( SetWindowPos( (HWND)m_Handle, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER ) );
+        VERIFY( SetWindowPos( (HWND)m_Handle, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE ) );
         ASSERT( this == (void*)GetWindowLongPtr( (HWND)m_Handle, GWLP_USERDATA ) );
     #else
         (void)x;
@@ -198,6 +209,13 @@ void OSWindow::SetTitle( const char * title )
 // OnClose
 //------------------------------------------------------------------------------
 /*virtual*/ bool OSWindow::OnClose()
+{
+    return false; // Not handled by child class
+}
+
+// OnQuit
+//------------------------------------------------------------------------------
+/*virtual*/ bool OSWindow::OnQuit()
 {
     return false; // Not handled by child class
 }

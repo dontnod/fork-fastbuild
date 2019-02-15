@@ -12,11 +12,11 @@ class FunctionExec : public Function
 {
 public:
     explicit        FunctionExec();
-    inline virtual ~FunctionExec() = default;
+    inline virtual ~FunctionExec() override = default;
 
 protected:
     virtual bool AcceptsHeader() const override;
-    virtual bool Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const override;
+    virtual Node * CreateNode() const override;
 };
 
 //------------------------------------------------------------------------------

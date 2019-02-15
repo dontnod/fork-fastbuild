@@ -4,14 +4,6 @@
     .ProjectName        = 'CoreTest'
     .ProjectPath        = 'Core\CoreTest'
 
-    // Unity
-    //--------------------------------------------------------------------------
-    Unity( '$ProjectName$-Unity' )
-    {
-        .UnityInputPath             = '$ProjectPath$\'
-        .UnityOutputPath            = '$UnityOutputBase$\$ProjectPath$\'
-    }
-
     // Executable
     //--------------------------------------------------------------------------
     ForEach( .Config in .Configs )
@@ -19,19 +11,27 @@
         Using( .Config )
         .OutputBase + '\$Platform$-$Config$'
 
+        // Unity
+        //--------------------------------------------------------------------------
+        Unity( '$ProjectName$-Unity-$Platform$-$Config$' )
+        {
+            .UnityInputPath             = '$ProjectPath$/'
+            .UnityOutputPath            = '$OutputBase$/$ProjectPath$/'
+        }
+
         // Library
         //--------------------------------------------------------------------------
         ObjectList( '$ProjectName$-Lib-$Platform$-$Config$' )
         {
             // Input (Unity)
-            .CompilerInputUnity         = '$ProjectName$-Unity'
+            .CompilerInputUnity         = '$ProjectName$-Unity-$Platform$-$Config$'
 
             // Extra Compiler Options
             .CompilerOptions            + .UseExceptions // Test framework uses exceptions
 
             // Output
-            .CompilerOutputPath         = '$OutputBase$/$ProjectName$/'
-            .LibrarianOutput            = '$OutputBase$/$ProjectName$/$ProjectName$$LibExtension$'
+            .CompilerOutputPath         = '$OutputBase$/$ProjectPath$/'
+            .LibrarianOutput            = '$OutputBase$/$ProjectPath$/$ProjectName$$LibExtension$'
         }
 
         // Executable
@@ -47,6 +47,7 @@
             .LinkerOutput                   = '$OutputBase$/$ProjectPath$/$ProjectName$$ExeExtension$'
             #if __WINDOWS__
                 .LinkerOptions                  + ' /SUBSYSTEM:CONSOLE'
+                                                + ' Advapi32.lib'
                                                 + ' kernel32.lib'
                                                 + ' Ws2_32.lib'
                                                 + ' User32.lib'
@@ -57,6 +58,7 @@
             #endif
         }
         Alias( '$ProjectName$-$Platform$-$Config$' ) { .Targets = '$ProjectName$-Exe-$Platform$-$Config$' }
+        ^'Targets_$Platform$_$Config$' + { '$ProjectName$-$Platform$-$Config$' }
 
         // Run Test
         //--------------------------------------------------------------------------
@@ -80,9 +82,9 @@
             .ProjectOutput              = '../tmp/VisualStudio/Projects/$ProjectName$.vcxproj'
             .ProjectInputPaths          = '$ProjectPath$\'
             .ProjectBasePath            = '$ProjectPath$\'
-    
+
             .LocalDebuggerCommand       = '^$(SolutionDir)..\^$(Configuration)\Core\CoreTest\CoreTest.exe'
-    
+
             .ProjectX64Debug        = [ Using( .ProjectX64Debug )           .Target = '$ProjectName$-X64-Debug' ]
             .ProjectX64Profile      = [ Using( .ProjectX64Profile )         .Target = '$ProjectName$-X64-Profile' ]
             .ProjectX64Release      = [ Using( .ProjectX64Release )         .Target = '$ProjectName$-X64-Release' ]
@@ -102,9 +104,9 @@
             .ProjectOutput              = '../tmp/XCode/Projects/1_Test/$ProjectName$.xcodeproj/project.pbxproj'
             .ProjectInputPaths          = '$ProjectPath$/'
             .ProjectBasePath            = '$ProjectPath$/'
-    
+
             .XCodeBuildWorkingDir       = '../../../../Code/'
-    
+
             .ProjectOSXDebug        = [ .Config = 'Debug'   .Target = '$ProjectName$-x64OSX-Debug' ]
             .ProjectOSXProfile      = [ .Config = 'Profile' .Target = '$ProjectName$-x64OSX-Profile' ]
             .ProjectOSXRelease      = [ .Config = 'Release' .Target = '$ProjectName$-x64OSX-Release' ]

@@ -20,7 +20,7 @@
 
 // system
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Windows.h>
 #endif
 
 #if defined(__LINUX__) || defined(__APPLE__)
@@ -40,7 +40,7 @@
         m_DLL = ::LoadLibrary( dllName.Get() );
         if ( !m_DLL )
         {
-            FLOG_WARN( "Cache plugin '%s' load failed (0x%x).", dllName.Get(), ::GetLastError() );
+            FLOG_WARN( "Cache plugin '%s' load failed (0x%x).", dllName.Get(), (uint32_t)::GetLastError() );
             return;
         }
 
@@ -132,7 +132,7 @@ void * CachePlugin::GetFunction( const char * friendlyName, const char * mangled
 
 // Init
 //------------------------------------------------------------------------------
-/*virtual*/ bool CachePlugin::Init( const AString & cachePath )
+/*virtual*/ bool CachePlugin::Init( const AString & cachePath, const AString & /*cachePathMountPoint*/ )
 {
     // ensure all functions were found
     if ( m_InitFunc && m_ShutdownFunc && m_PublishFunc && m_RetrieveFunc && m_FreeMemoryFunc )

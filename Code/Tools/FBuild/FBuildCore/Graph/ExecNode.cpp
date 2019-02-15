@@ -34,6 +34,7 @@ REFLECT_NODE_BEGIN( ExecNode, Node, MetaName( "ExecOutput" ) + MetaFile() )
     REFLECT(        m_ExecWorkingDir,           "ExecWorkingDir",           MetaOptional() + MetaPath() )
     REFLECT(        m_ExecReturnCode,           "ExecReturnCode",           MetaOptional() )
     REFLECT(        m_ExecUseStdOutAsOutput,    "ExecUseStdOutAsOutput",    MetaOptional() )
+    REFLECT(        m_ExecAlways,               "ExecAlways",               MetaOptional() )
     REFLECT_ARRAY(  m_PreBuildDependencyNames,  "PreBuildDependencies",     MetaOptional() + MetaFile() + MetaAllowNonFile() )
 
     // Internal State
@@ -46,6 +47,7 @@ ExecNode::ExecNode()
     : FileNode( AString::GetEmpty(), Node::FLAG_NONE )
     , m_ExecReturnCode( 0 )
     , m_ExecUseStdOutAsOutput( false )
+    , m_ExecAlways( false )
     , m_ExecInputPathRecurse( true )
 {
     m_Type = EXEC_NODE;
@@ -55,7 +57,7 @@ ExecNode::ExecNode()
 
 // Initialize
 //------------------------------------------------------------------------------
-bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
+/*virtual*/ bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
 {
     // .PreBuildDependencies
     if ( !InitializePreBuildDependencies( nodeGraph, iter, function, m_PreBuildDependencyNames ) )
@@ -65,7 +67,7 @@ bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .ExecExecutable
     Dependencies executable;
-    if ( !function->GetFileNode( nodeGraph, iter, m_ExecExecutable, "ExecExecutable", executable ) )
+    if ( !Function::GetFileNode( nodeGraph, iter, function, m_ExecExecutable, "ExecExecutable", executable ) )
     {
         return false; // GetFileNode will have emitted an error
     }
@@ -73,7 +75,7 @@ bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .ExecInput
     Dependencies execInputFiles;
-    if ( !function->GetFileNodes( nodeGraph, iter, m_ExecInput, "ExecInput", execInputFiles ) )
+    if ( !Function::GetFileNodes( nodeGraph, iter, function, m_ExecInput, "ExecInput", execInputFiles ) )
     {
         return false; // GetFileNodes will have emitted an error
     }
@@ -81,8 +83,9 @@ bool ExecNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .ExecInputPath
     Dependencies execInputPaths;
-    if ( !function->GetDirectoryListNodeList( nodeGraph,
+    if ( !Function::GetDirectoryListNodeList( nodeGraph,
                                               iter,
+                                              function,
                                               m_ExecInputPath,
                                               m_ExecInputExcludePath,
                                               m_ExecInputExcludedFiles,
@@ -148,6 +151,18 @@ ExecNode::~ExecNode() = default;
     }
 
     return true;
+}
+
+// DetermineNeedToBuild
+//------------------------------------------------------------------------------
+/*virtual*/ bool ExecNode::DetermineNeedToBuild( bool forceClean ) const
+{
+    if ( m_ExecAlways )
+    {
+        FLOG_INFO( "Need to build '%s' (ExecAlways = true)", GetName().Get() );
+        return true;
+    }
+    return Node::DetermineNeedToBuild( forceClean );
 }
 
 // DoBuild
@@ -221,30 +236,6 @@ ExecNode::~ExecNode() = default;
     // update the file's "last modified" time
     m_Stamp = FileIO::GetFileLastWriteTime( m_Name );
     return NODE_RESULT_OK;
-}
-
-// Load
-//------------------------------------------------------------------------------
-/*static*/ Node * ExecNode::Load( NodeGraph & nodeGraph, IOStream & stream )
-{
-    NODE_LOAD( AStackString<>, name );
-
-    ExecNode * node = nodeGraph.CreateExecNode( name );
-
-    if ( node->Deserialize( nodeGraph, stream ) == false )
-    {
-        return nullptr;
-    }
-
-    return node;
-}
-
-// Save
-//------------------------------------------------------------------------------
-/*virtual*/ void ExecNode::Save( IOStream & stream ) const
-{
-    NODE_SAVE( m_Name );
-    Node::Serialize( stream );
 }
 
 // EmitCompilationMessage

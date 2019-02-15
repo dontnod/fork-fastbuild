@@ -21,12 +21,13 @@ private:
     DECLARE_TESTS
 
     // Helpers
-    FBuildStats BuildInternal( FBuildTestOptions options = FBuildTestOptions(), bool useDB = true ) const;
+    FBuildStats BuildInternal( FBuildTestOptions options = FBuildTestOptions(), bool useDB = true, bool forceMigration = false ) const;
     const char * GetDBFile() const { return "../tmp/Test/BuildFBuild/TestFBuild.db"; }
 
     // Tests
     void BuildClean() const;
     void Build_NoRebuild() const;
+    void Build_NoRebuild_BFFChange() const;
     void BuildCleanWithCache() const;
 
     void DBSavePerformance() const;
@@ -37,17 +38,20 @@ private:
 REGISTER_TESTS_BEGIN( TestBuildFBuild )
     REGISTER_TEST( BuildClean )             // clean build (populating cache)
     REGISTER_TEST( Build_NoRebuild )        // check no rebuild
+    REGISTER_TEST( Build_NoRebuild_BFFChange ) // check no rebuild (bff change)
     REGISTER_TEST( BuildCleanWithCache )    // clean, reading from cache
     REGISTER_TEST( Build_NoRebuild )        // check no rebuild again
+    REGISTER_TEST( Build_NoRebuild_BFFChange ) // check no rebuild again (bff change)
 
     REGISTER_TEST( DBSavePerformance )      // Time to save a non-trivial DB
 REGISTER_TESTS_END
 
 // BuildInternal
 //------------------------------------------------------------------------------
-FBuildStats TestBuildFBuild::BuildInternal( FBuildTestOptions options, bool useDB ) const
+FBuildStats TestBuildFBuild::BuildInternal( FBuildTestOptions options, bool useDB, bool forceMigration ) const
 {
     options.m_ConfigFile = "Tools/FBuild/FBuildTest/Data/TestBuildFBuild/fbuild.bff";
+    options.m_ForceDBMigration_Debug = forceMigration;
 
     FBuild fBuild( options );
     TEST_ASSERT( fBuild.Initialize( useDB ? GetDBFile() : nullptr ) );
@@ -121,6 +125,20 @@ void TestBuildFBuild::Build_NoRebuild() const
     TEST_ASSERT( stats.GetStatsFor( Node::EXE_NODE ).m_NumBuilt == 0 );
 }
 
+// Build_NoRebuild_BFFChange
+//------------------------------------------------------------------------------
+void TestBuildFBuild::Build_NoRebuild_BFFChange() const
+{
+    // ensure nothing is rebuilt
+    const bool forceMigration = true;
+    FBuildStats stats = BuildInternal( FBuildTestOptions(), true, forceMigration );
+
+    // check nothing rebuilt
+    TEST_ASSERT( stats.GetStatsFor( Node::OBJECT_NODE ).m_NumBuilt == 0 );
+    TEST_ASSERT( stats.GetStatsFor( Node::LIBRARY_NODE ).m_NumBuilt == 0 );
+    TEST_ASSERT( stats.GetStatsFor( Node::EXE_NODE ).m_NumBuilt == 0 );
+}
+
 // BuildCleanWithCache
 //------------------------------------------------------------------------------
 void TestBuildFBuild::BuildCleanWithCache() const
@@ -154,12 +172,12 @@ void TestBuildFBuild::DBSavePerformance() const
     Timer t;
     for ( size_t i=0; i<100; ++i )
     {
-		ms.Reset();
+        ms.Reset();
         fBuild.SaveDependencyGraph( ms, "unused.fdb" );
     }
 
     const float time = ( t.GetElapsed() * 1000.0f ) / 100.0f;
-    OUTPUT( "DB Save Time: %2.3f ms\n", time);
+    OUTPUT( "DB Save Time: %2.3f ms\n", (double)time );
 }
 
 //------------------------------------------------------------------------------

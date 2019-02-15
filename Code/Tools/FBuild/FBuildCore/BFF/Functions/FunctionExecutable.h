@@ -20,11 +20,11 @@ class FunctionExecutable : public Function
 {
 public:
     explicit        FunctionExecutable();
-    inline virtual ~FunctionExecutable() = default;
+    inline virtual ~FunctionExecutable() override = default;
 
 protected:
     virtual bool AcceptsHeader() const override;
-    virtual bool Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const override;
+    virtual Node * CreateNode() const override;
 };
 
 //------------------------------------------------------------------------------

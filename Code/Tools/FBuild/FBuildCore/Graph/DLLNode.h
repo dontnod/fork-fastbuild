@@ -16,13 +16,12 @@ class DLLNode : public LinkerNode
     REFLECT_NODE_DECLARE( DLLNode )
 public:
     explicit DLLNode();
-    virtual ~DLLNode();
+    virtual ~DLLNode() override;
 
     void GetImportLibName( AString & importLibName ) const;
 
     static inline Node::Type GetTypeS() { return Node::DLL_NODE; }
 
-    static Node * Load( NodeGraph & nodeGraph, IOStream & stream );
 };
 
 //------------------------------------------------------------------------------

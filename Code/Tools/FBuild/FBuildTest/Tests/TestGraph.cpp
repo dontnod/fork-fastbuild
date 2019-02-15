@@ -32,7 +32,7 @@
 
 // system
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Windows.h>
 #endif
 
 // TestGraph
@@ -94,12 +94,11 @@ void TestGraph::TestNodeTypes() const
     TEST_ASSERT( fn->GetType() == Node::FILE_NODE);
     TEST_ASSERT( FileNode::GetTypeS() == Node::FILE_NODE);
 
-    CompilerNode * cn( nullptr );
     {
         #if defined( __WINDOWS__ )
-            cn = ng.CreateCompilerNode( AStackString<>( "c:\\cl.exe" ) );
+            CompilerNode * cn = ng.CreateCompilerNode( AStackString<>( "c:\\cl.exe" ) );
         #else
-            cn = ng.CreateCompilerNode( AStackString<>( "/usr/bin/gcc" ) );
+            CompilerNode * cn = ng.CreateCompilerNode( AStackString<>( "/usr/bin/gcc" ) );
         #endif
         TEST_ASSERT( cn->GetType() == Node::COMPILER_NODE );
         TEST_ASSERT( AStackString<>( "Compiler" ) == cn->GetTypeName() );
@@ -305,10 +304,13 @@ void TestGraph::TestSerialization() const
 
     // load the config file and save the resulting db
     {
+        // Ensure we're creating the DB by parsing the BFF
+        EnsureFileDoesNotExist( AStackString<>( dbFile1 ) );
+
         FBuildOptions options;
         options.m_ConfigFile = "fbuild.bff";
         FBuild fBuild( options );
-        TEST_ASSERT( fBuild.Initialize() );
+        TEST_ASSERT( fBuild.Initialize( dbFile1 ) );
         TEST_ASSERT( fBuild.SaveDependencyGraph( dbFile1 ) );
         TEST_ASSERT( FileIO::FileExists( dbFile1 ) );
     }
@@ -450,83 +452,92 @@ void TestGraph::TestCleanPathPartial() const
 
     FBuild f( fo );
 
+    #define CHECK( input, expectedOutput, makeFullPath ) \
+        { \
+            AStackString<> cleaned; \
+            NodeGraph::CleanPath( AStackString<>( input ), cleaned, makeFullPath ); \
+            TEST_ASSERT( cleaned == expectedOutput ); \
+        }
+
     #if defined( __WINDOWS__ )
-        #define CHECK( a, b, c ) \
-            { \
-                AStackString<> cleaned; \
-                NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
-                TEST_ASSERT( cleaned == b ); \
-            }
+        #define CHECK_RELATIVE( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedWindows, false );
+        #define CHECK_FULLPATH( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedWindows, true );
     #else
-        #define CHECK( a, b, c ) \
-            { \
-                AStackString<> cleaned; \
-                NodeGraph::CleanPath( AStackString<>( a ), cleaned, false ); \
-                TEST_ASSERT( cleaned == c ); \
-            }
+        #define CHECK_RELATIVE( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedOther, false );
+        #define CHECK_FULLPATH( input, expectedWindows, expectedOther ) \
+            CHECK( input, expectedOther, true );
     #endif
 
     //   "\..\"
-    CHECK( "file.dat", "file.dat", "file.dat" )
-    CHECK( "..\\file.dat", "..\\file.dat", "../file.dat" )
-    CHECK( "..\\..\\file.dat", "..\\..\\file.dat", "../../file.dat" )
-    CHECK( "..\\..\\..\\file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
+    CHECK_RELATIVE( "file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "..\\file.dat", "..\\file.dat", "../file.dat" )
+    CHECK_RELATIVE( "..\\..\\file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK_RELATIVE( "..\\..\\..\\file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
 
     //   "/../"
-    CHECK( "../file.dat", "..\\file.dat", "../file.dat" )
-    CHECK( "../../file.dat", "..\\..\\file.dat", "../../file.dat" )
-    CHECK( "../../../file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
+    CHECK_RELATIVE( "../file.dat", "..\\file.dat", "../file.dat" )
+    CHECK_RELATIVE( "../../file.dat", "..\\..\\file.dat", "../../file.dat" )
+    CHECK_RELATIVE( "../../../file.dat", "..\\..\\..\\file.dat", "../../../file.dat" )
 
     //   "\.\"
-    CHECK( ".\\file.dat", "file.dat", "file.dat" )
-    CHECK( "folder\\.\\file.dat", "folder\\file.dat", "folder/file.dat" )
-    CHECK( ".\\.\\.\\file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( ".\\file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "folder\\.\\file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK_RELATIVE( ".\\.\\.\\file.dat", "file.dat", "file.dat" )
 
     //   "/./"
-    CHECK( "./file.dat", "file.dat", "file.dat" )
-    CHECK( "folder/./file.dat", "folder\\file.dat", "folder/file.dat" )
-    CHECK( "./././file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "./file.dat", "file.dat", "file.dat" )
+    CHECK_RELATIVE( "folder/./file.dat", "folder\\file.dat", "folder/file.dat" )
+    CHECK_RELATIVE( "./././file.dat", "file.dat", "file.dat" )
 
     // ".." collapsing
-    CHECK( "one\\two\\..\\..\\three\\four\\file.dat", "three\\four\\file.dat", "three/four/file.dat" )
-    CHECK( "one\\two\\..\\three\\file.dat", "one\\three\\file.dat", "one/three/file.dat" )
-    CHECK( "one\\two\\..\\..\\..\\..\\three\\four\\file.dat", "..\\..\\three\\four\\file.dat", "../../three/four/file.dat" )
+    CHECK_RELATIVE( "one\\two\\..\\..\\three\\four\\file.dat", "three\\four\\file.dat", "three/four/file.dat" )
+    CHECK_RELATIVE( "one\\two\\..\\three\\file.dat", "one\\three\\file.dat", "one/three/file.dat" )
+    CHECK_RELATIVE( "one\\two\\..\\..\\..\\..\\three\\four\\file.dat", "..\\..\\three\\four\\file.dat", "../../three/four/file.dat" )
 
     //   full path '\'
     #if defined( __WINDOWS__ )
-        CHECK( "C:\\Windows\\System32\\file.dat", "C:\\Windows\\System32\\file.dat", "" )
-        CHECK( "C:\\Windows\\System32\\..\\file.dat", "C:\\Windows\\file.dat", "" )
-        CHECK( "C:\\Windows\\System32\\..\\..\\file.dat", "C:\\file.dat", "" )
-        CHECK( "C:\\Windows\\System32\\..\\..\\..\\file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\..\\file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:\\Windows\\System32\\..\\..\\..\\file.dat", "C:\\file.dat", "" )
     #endif
 
     //   full path '/'
     #if defined( __WINDOWS__ )
-        CHECK( "C:/Windows/System32/file.dat", "C:\\Windows\\System32\\file.dat", "" )
-        CHECK( "C:/Windows/System32/../file.dat", "C:\\Windows\\file.dat", "" )
-        CHECK( "C:/Windows/System32/../../file.dat", "C:\\file.dat", "" )
-        CHECK( "C:/Windows/System32/../../../file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/file.dat", "C:\\Windows\\System32\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../file.dat", "C:\\Windows\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../../file.dat", "C:\\file.dat", "" )
+        CHECK_RELATIVE( "C:/Windows/System32/../../../file.dat", "C:\\file.dat", "" )
     #endif
 
     // files with . in them
-    CHECK( ".file.dat", ".file.dat", ".file.dat" )
-    CHECK( ".file", ".file", ".file" )
-    CHECK( "subdir\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( ".file.dat", ".file.dat", ".file.dat" )
+    CHECK_RELATIVE( ".file", ".file", ".file" )
+    CHECK_RELATIVE( "subdir\\.file", "subdir\\.file", "subdir/.file" )
 
     // multiple slash removal
-    CHECK( "subdir\\\\.file", "subdir\\.file", "subdir/.file" )
-    CHECK( "subdir//.file", "subdir\\.file", "subdir/.file" )
-    CHECK( "subdir//.//.file", "subdir\\.file", "subdir/.file" )
-    CHECK( "subdir\\\\.\\\\.file", "subdir\\.file", "subdir/.file" )
-    CHECK( "subdir\\\\..\\\\.file", ".file", ".file" )
-    CHECK( "subdir//..//.file", ".file", ".file" )
+    CHECK_RELATIVE( "subdir\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir//.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir//.//.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir\\\\.\\\\.file", "subdir\\.file", "subdir/.file" )
+    CHECK_RELATIVE( "subdir\\\\..\\\\.file", ".file", ".file" )
+    CHECK_RELATIVE( "subdir//..//.file", ".file", ".file" )
 
     // edge cases/regressions
     #if defined( __WINDOWS__ )
         // - There was a bug with folders beginning with a slash on Windows
-        CHECK( "\\folder\\file", "folder\\file", "" )
+        CHECK_RELATIVE( "\\folder\\file", "folder\\file", "" )
     #endif
+    // - A bug meant paths terminated with .. were not correctly handled
+    CHECK_FULLPATH( "..", "C:\\Windows\\", "/tmp/" )
+    CHECK_FULLPATH( ".\\..", "C:\\Windows\\", "/tmp/" )
+    CHECK_FULLPATH( "./..", "C:\\Windows\\", "/tmp/" )
 
+    #undef CHECK_FULLPATH
+    #undef CHECK_RELATIVE
     #undef CHECK
 }
 
