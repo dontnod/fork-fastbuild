@@ -638,6 +638,13 @@ static bool BufferForHashEqual( char lhs, char rhs )
 // Make hash functions path agnostic :
 static const void * PrepareBufferForHash( const char * inputBuffer, size_t inputLen, size_t& outputLen )
 {
+    // If called from FBuildWorker, FBuild::Get() does not exist
+    if (!FBuild::IsValid())
+    {
+        outputLen = inputLen;
+        return inputBuffer;
+    }
+
     const AString & rootPath = FBuild::Get().GetRootPath();
     const uint32_t rootPathLen = rootPath.GetLength();
     if ( rootPath.IsEmpty() || ( inputLen < rootPathLen ) )
