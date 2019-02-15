@@ -12,11 +12,11 @@ class FunctionTest : public Function
 {
 public:
     explicit        FunctionTest();
-    inline virtual ~FunctionTest() = default;
+    inline virtual ~FunctionTest() override = default;
 
 protected:
     virtual bool AcceptsHeader() const override;
-    virtual bool Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const override;
+    virtual Node * CreateNode() const override;
 };
 
 //------------------------------------------------------------------------------

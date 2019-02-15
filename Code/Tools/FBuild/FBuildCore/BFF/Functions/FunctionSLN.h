@@ -16,12 +16,11 @@ class FunctionSLN : public Function
 {
 public:
     explicit         FunctionSLN();
-    inline virtual  ~FunctionSLN() = default;
+    inline virtual  ~FunctionSLN() override = default;
 
 protected:
     virtual bool AcceptsHeader() const override;
-
-    virtual bool Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const override;
+    virtual Node *CreateNode() const override;
 };
 
 //------------------------------------------------------------------------------

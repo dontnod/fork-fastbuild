@@ -16,11 +16,9 @@ class ExeNode : public LinkerNode
     REFLECT_NODE_DECLARE( ExeNode )
 public:
     explicit ExeNode();
-    virtual ~ExeNode();
+    virtual ~ExeNode() override;
 
     static inline Node::Type GetTypeS() { return Node::EXE_NODE; }
-
-    static Node * Load( NodeGraph & nodeGraph, IOStream & stream );
 };
 
 //------------------------------------------------------------------------------

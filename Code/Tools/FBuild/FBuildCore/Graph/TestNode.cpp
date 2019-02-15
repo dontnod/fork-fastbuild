@@ -57,7 +57,7 @@ TestNode::TestNode()
 
 // Initialize
 //------------------------------------------------------------------------------
-bool TestNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
+/*virtual*/ bool TestNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
 {
     // .PreBuildDependencies
     if ( !InitializePreBuildDependencies( nodeGraph, iter, function, m_PreBuildDependencyNames ) )
@@ -67,7 +67,7 @@ bool TestNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .TestExecutable
     Dependencies executable;
-    if ( !function->GetFileNode( nodeGraph, iter, m_TestExecutable, "TestExecutable", executable ) )
+    if ( !Function::GetFileNode( nodeGraph, iter, function, m_TestExecutable, "TestExecutable", executable ) )
     {
         return false; // GetFileNode will have emitted an error
     }
@@ -75,7 +75,7 @@ bool TestNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .TestInput
     Dependencies testInputFiles;
-    if ( !function->GetFileNodes( nodeGraph, iter, m_TestInput, "TestInput", testInputFiles ) )
+    if ( !Function::GetFileNodes( nodeGraph, iter, function, m_TestInput, "TestInput", testInputFiles ) )
     {
         return false; // GetFileNodes will have emitted an error
     }
@@ -83,8 +83,9 @@ bool TestNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, cons
 
     // .TestInputPath
     Dependencies testInputPaths;
-    if ( !function->GetDirectoryListNodeList( nodeGraph,
+    if ( !Function::GetDirectoryListNodeList( nodeGraph,
                                               iter,
+                                              function,
                                               m_TestInputPath,
                                               m_TestInputExcludePath,
                                               m_TestInputExcludedFiles,
@@ -186,11 +187,6 @@ TestNode::~TestNode() = default;
     uint32_t memOutSize = 0;
     uint32_t memErrSize = 0;
     bool timedOut = !p.ReadAllData( memOut, &memOutSize, memErr, &memErrSize, m_TestTimeOut * 1000 );
-    if ( timedOut )
-    {
-        FLOG_ERROR( "Test timed out after %u s (%s)", m_TestTimeOut, m_TestExecutable.Get() );
-        return NODE_RESULT_FAILED;
-    }
 
     // Get result
     int result = p.WaitForExit();
@@ -199,11 +195,20 @@ TestNode::~TestNode() = default;
         return NODE_RESULT_FAILED;
     }
 
-    if ( ( result != 0 ) || ( m_TestAlwaysShowOutput == true ) )
+    if ( ( timedOut == true ) || ( result != 0 ) || ( m_TestAlwaysShowOutput == true ) )
     {
         // something went wrong, print details
         Node::DumpOutput( job, memOut.Get(), memOutSize );
         Node::DumpOutput( job, memErr.Get(), memErrSize );
+    }
+
+    if ( timedOut == true )
+    {
+        FLOG_ERROR( "Test timed out after %u s (%s)", m_TestTimeOut, m_TestExecutable.Get() );
+    }
+    else if ( result != 0 )
+    {
+        FLOG_ERROR( "Test failed (error %i) '%s'", result, GetName().Get() );
     }
 
     // write the test output (saved for pass or fail)
@@ -222,9 +227,8 @@ TestNode::~TestNode() = default;
     fs.Close();
 
     // did the test fail?
-    if ( result != 0 )
+    if ( ( timedOut == true ) || ( result != 0 ) )
     {
-        FLOG_ERROR( "Test failed (error %i) '%s'", result, GetName().Get() );
         return NODE_RESULT_FAILED;
     }
 
@@ -256,29 +260,6 @@ void TestNode::EmitCompilationMessage( const char * workingDir ) const
         }
     }
     FLOG_BUILD_DIRECT( output.Get() );
-}
-
-// Save
-//------------------------------------------------------------------------------
-/*virtual*/ void TestNode::Save( IOStream & stream ) const
-{
-    NODE_SAVE( m_Name );
-    Node::Serialize( stream );
-}
-
-// Load
-//------------------------------------------------------------------------------
-/*static*/ Node * TestNode::Load( NodeGraph & nodeGraph, IOStream & stream )
-{
-    NODE_LOAD( AStackString<>, name );
-
-    TestNode * node = nodeGraph.CreateTestNode( name );
-
-    if ( node->Deserialize( nodeGraph, stream ) == false )
-    {
-        return nullptr;
-    }
-    return node;
 }
 
 //------------------------------------------------------------------------------

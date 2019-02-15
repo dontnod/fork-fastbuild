@@ -12,12 +12,16 @@
 
 // system
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Windows.h>
 #endif
 #if defined( __APPLE__ ) || defined( __LINUX__ )
     #include <errno.h>
     #include <pthread.h>
     #include <unistd.h>
+#endif
+
+#if !defined( __has_feature )
+    #define __has_feature( ... ) 0
 #endif
 
 // Debug Structure for thread name setting
@@ -134,6 +138,12 @@ public:
                                    nullptr      // LPDWORD lpThreadId
                                  );
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
+        #if __has_feature( address_sanitizer ) || defined( __SANITIZE_ADDRESS__ )
+            // AddressSanitizer instruments objects created on the stack by inserting redzones around them.
+            // This greatly increases the amount of stack space used by the program.
+            // To account for that double the requested stack size for the thread.
+            stackSize *= 2;
+        #endif
         pthread_t h;
         pthread_attr_t threadAttr;
         VERIFY( pthread_attr_init( &threadAttr ) == 0 );

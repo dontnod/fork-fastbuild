@@ -15,7 +15,7 @@
 
 // system
 #if defined( __WINDOWS__ )
-    #include <windows.h>
+    #include <Windows.h>
     #include <shellapi.h>
 #endif
 
@@ -34,7 +34,7 @@ class WorkerWindow : public OSWindow, public Singleton< WorkerWindow >
 {
 public:
     explicit WorkerWindow( void * hInstance );
-    ~WorkerWindow();
+    virtual ~WorkerWindow() override;
 
     void SetStatus( const char * statusText );
     void SetWorkerState( size_t index, const AString & hostName, const AString & status );
@@ -56,6 +56,7 @@ private:
     // OSWindow events
     virtual bool OnClose() override;
     virtual bool OnMinimize() override;
+    virtual bool OnQuit() override;
     virtual bool OnTrayIconLeftClick() override;
     virtual bool OnTrayIconRightClick() override;
     virtual void OnDropDownSelectionChanged( OSDropDown * dropDown ) override;
