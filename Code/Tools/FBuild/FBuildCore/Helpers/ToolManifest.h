@@ -91,6 +91,7 @@ public:
     void            GetRemotePath( AString & path ) const;
     void            GetRemoteFilePath( uint32_t fileId, AString & exe ) const;
     const char *    GetRemoteEnvironmentString() const { return m_RemoteEnvironmentString; }
+    const AString&  GetRemoteBffRootPath() const { return m_BffRootPath; }
 
     static void     GetRelativePath( const AString & root, const AString & otherFile, AString & otherFileRelativePath );
 private:
@@ -103,6 +104,7 @@ private:
     uint64_t                    m_ToolId;       // Global identifier for this toolchain
     uint64_t                    m_TimeStamp;    // Time stamp of most recent file
     AString                     m_MainExecutableRootPath;
+    AString                     m_BffRootPath;  // Used for path agnostic hashing (PQU)
     Array< ToolManifestFile >   m_Files;
     Array< AString >            m_CustomEnvironmentVariables;
 

@@ -13,7 +13,7 @@
 class CIncludeParser
 {
 public:
-    explicit CIncludeParser();
+    explicit CIncludeParser(const AString& rootPath);
     ~CIncludeParser();
 
     bool ParseMSCL_Output( const char * compilerOutput, size_t compilerOutputSize );
@@ -32,6 +32,9 @@ private:
     static void ParseToNextLineStartingWithHash( const char * & pos );
 
     void AddInclude( const char * begin, const char * end );
+
+    // PQU: needed for path agnostic hash
+    AString             m_RootPath;
 
     // temporary data
     uint32_t            m_LastCRC1;

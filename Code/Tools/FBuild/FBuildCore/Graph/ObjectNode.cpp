@@ -366,7 +366,7 @@ ObjectNode::~ObjectNode()
     }
 
     // compiled ok, try to extract includes
-    if ( ProcessIncludesMSCL( output, outputSize ) == false )
+    if ( ProcessIncludesMSCL( job, output, outputSize ) == false )
     {
         return NODE_RESULT_FAILED; // ProcessIncludesMSCL will have emitted an error
     }
@@ -678,12 +678,17 @@ Node::BuildResult ObjectNode::DoBuild_QtRCC( Job * job )
 
 // ProcessIncludesMSCL
 //------------------------------------------------------------------------------
-bool ObjectNode::ProcessIncludesMSCL( const char * output, uint32_t outputSize )
+bool ObjectNode::ProcessIncludesMSCL( Job * job, const char * output, uint32_t outputSize )
 {
     Timer t;
 
     {
-        CIncludeParser parser;
+        // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+        const AString& rootPath = ( job->IsLocal() 
+            ? FBuild::Get().GetRootPath()
+            : job->GetToolManifest()->GetRemoteBffRootPath() );
+
+        CIncludeParser parser(rootPath);
         bool result = ( output && outputSize ) ? parser.ParseMSCL_Output( output, outputSize )
                                                : false;
 
@@ -729,7 +734,12 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
 
         ASSERT( output && outputSize );
 
-        CIncludeParser parser;
+        // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+        const AString& rootPath = ( job->IsLocal() 
+            ? FBuild::Get().GetRootPath()
+            : job->GetToolManifest()->GetRemoteBffRootPath() );
+
+        CIncludeParser parser(rootPath);
         bool msvcStyle;
         if ( GetDedicatedPreprocessor() != nullptr )
         {
@@ -1082,9 +1092,14 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
 
     PROFILE_FUNCTION
 
+    // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+    const AString& rootPath = ( job->IsLocal() 
+        ? FBuild::Get().GetRootPath()
+        : job->GetToolManifest()->GetRemoteBffRootPath() );
+
     // hash the pre-processed input data
     ASSERT( job->GetData() );
-    const uint64_t preprocessedSourceKey = FBuild::Hash32( job->GetData(), job->GetDataSize() );
+    const uint64_t preprocessedSourceKey = FBuild::Hash32( rootPath, job->GetData(), job->GetDataSize() );
 
     // hash the build "environment"
     // TODO:B Exclude preprocessor control defines (the preprocessed input has considered those already)
@@ -1095,7 +1110,7 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
         const bool showIncludes = false;
         const bool finalize = false; // Don't write args to reponse file
         BuildArgs( job, args, PASS_COMPILE_PREPROCESSED, useDeoptimization, showIncludes, finalize );
-        commandLineKey = FBuild::Hash32( args.GetRawArgs().Get(), args.GetRawArgs().GetLength() );
+        commandLineKey = FBuild::Hash32( rootPath, args.GetRawArgs().Get(), args.GetRawArgs().GetLength() );
     }
 
     // ToolChain hash
@@ -1143,7 +1158,7 @@ bool ObjectNode::RetrieveFromCache( Job * job )
             uint64_t pchKey = 0;
             if ( GetFlag( FLAG_CREATING_PCH ) && GetFlag( FLAG_MSVC ) )
             {
-                pchKey = FBuild::Hash64( cacheData, cacheDataSize );
+                pchKey = FBuild::Hash64( FBuild::Get().GetRootPath()/* PQU: always performed on localhost */, cacheData, cacheDataSize );
             }
 
             // do decompression
@@ -1280,7 +1295,7 @@ void ObjectNode::WriteToCache( Job * job )
                 // Dependent objects need to know the PCH key to be able to pull from the cache
                 if ( GetFlag( FLAG_CREATING_PCH ) && GetFlag( FLAG_MSVC ) )
                 {
-                    m_PCHCacheKey = FBuild::Hash64( data, dataSize );
+                    m_PCHCacheKey = FBuild::Hash64( FBuild::Get().GetRootPath()/* PQU: always performed on localhost */, data, dataSize );
                 }
 
                 // Output
@@ -2086,8 +2101,13 @@ bool ObjectNode::WriteTmpFile( Job * job, AString & tmpDirectory, AString & tmpF
 {
     ASSERT( job->GetData() && job->GetDataSize() );
 
+    // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+    const AString& rootPath = ( job->IsLocal() 
+        ? FBuild::Get().GetRootPath()
+        : job->GetToolManifest()->GetRemoteBffRootPath() );
+
     Node * sourceFile = GetSourceFile();
-    uint32_t sourceNameHash = FBuild::Hash32( sourceFile->GetName().Get(), sourceFile->GetName().GetLength() );
+    uint32_t sourceNameHash = FBuild::Hash32( rootPath, sourceFile->GetName().Get(), sourceFile->GetName().GetLength() );
 
     FileStream tmpFile;
     AStackString<> fileName( sourceFile->GetName().FindLast( NATIVE_SLASH ) + 1 );

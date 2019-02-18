@@ -105,11 +105,11 @@ public:
     bool CacheTrim() const;
 
     // root path agnostic hash functions
-    static uint32_t Hash32( const void * buffer, size_t len );
-    static uint64_t Hash64( const void * buffer, size_t len );
+    static uint32_t Hash32( const AString & rootPath, const void * buffer, size_t len );
+    static uint64_t Hash64( const AString & rootPath, const void * buffer, size_t len );
 
-    inline static uint32_t Hash32( const AString & string ) { return Hash32( string.Get(), string.GetLength() ); }
-    inline static uint64_t Hash64( const AString & string ) { return Hash64( string.Get(), string.GetLength() ); }
+    inline static uint32_t Hash32( const AString & rootPath, const AString & string ) { return Hash32( rootPath, string.Get(), string.GetLength() ); }
+    inline static uint64_t Hash64( const AString & rootPath, const AString & string ) { return Hash64( rootPath, string.Get(), string.GetLength() ); }
 
 private:
     bool GetTargets( const Array< AString > & targets, Dependencies & outDeps ) const;
