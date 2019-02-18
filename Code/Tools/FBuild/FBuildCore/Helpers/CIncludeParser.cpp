@@ -18,8 +18,9 @@
 #include <string.h>
 
 //------------------------------------------------------------------------------
-CIncludeParser::CIncludeParser()
-    : m_LastCRC1( 0 )
+CIncludeParser::CIncludeParser(const AString& rootPath)
+    : m_RootPath(rootPath)
+    , m_LastCRC1( 0 )
     , m_CRCs1( 4096, true )
     , m_LastCRC2( 0 )
     , m_CRCs2( 4096, true )
@@ -363,7 +364,7 @@ void CIncludeParser::AddInclude( const char * begin, const char * end )
     #endif
 
     // quick check
-    uint32_t crc1 = FBuild::Hash32( begin, (size_t)( end - begin ) );
+    uint32_t crc1 = FBuild::Hash32( m_RootPath, begin, (size_t)( end - begin ) );
     if ( crc1 == m_LastCRC1 )
     {
         return;
@@ -383,10 +384,10 @@ void CIncludeParser::AddInclude( const char * begin, const char * end )
         // Windows and OSX are case-insensitive
         AStackString<> lowerCopy( cleanInclude );
         lowerCopy.ToLower();
-        uint32_t crc2 = FBuild::Hash32( lowerCopy );
+        uint32_t crc2 = FBuild::Hash32( m_RootPath, lowerCopy );
     #else
         // Linux is case-sensitive
-        uint32_t crc2 = FBuild::Hash32( cleanInclude );
+        uint32_t crc2 = FBuild::Hash32( m_RootPath, cleanInclude );
     #endif
     if ( crc2 == m_LastCRC2 )
     {

@@ -540,7 +540,7 @@ bool FBuild::ImportEnvironmentVar( const char * name, bool optional, AString & v
     else
     {
         // compute hash value for actual value
-        hash = FBuild::Hash32( value );
+        hash = FBuild::Hash32( m_RootPath, value );
     }
 
     // check if the environment var was already imported
@@ -636,16 +636,8 @@ static bool BufferForHashEqual( char lhs, char rhs )
 }
 
 // Make hash functions path agnostic :
-static const void * PrepareBufferForHash( const char * inputBuffer, size_t inputLen, size_t& outputLen )
+const void * RootPathSubstitution( const AString & rootPath, const char * inputBuffer, size_t inputLen, size_t& outputLen )
 {
-    // If called from FBuildWorker, FBuild::Get() does not exist
-    if (!FBuild::IsValid())
-    {
-        outputLen = inputLen;
-        return inputBuffer;
-    }
-
-    const AString & rootPath = FBuild::Get().GetRootPath();
     const uint32_t rootPathLen = rootPath.GetLength();
     if ( rootPath.IsEmpty() || ( inputLen < rootPathLen ) )
     {
@@ -702,10 +694,10 @@ static const void * PrepareBufferForHash( const char * inputBuffer, size_t input
     return preparedBuffer;
 }
 
-/*static*/ uint32_t FBuild::Hash32( const void * buffer, size_t len )
+/*static*/ uint32_t FBuild::Hash32( const AString & rootPath, const void * buffer, size_t len )
 {
     size_t hashLen = 0;
-    const void * bufferForHash = PrepareBufferForHash( (const char *)buffer, len, hashLen );
+    const void * bufferForHash = RootPathSubstitution( rootPath, (const char *)buffer, len, hashLen );
     const uint32_t h = xxHash::Calc32( bufferForHash, hashLen );
     if ( bufferForHash == buffer )
     {
@@ -714,10 +706,10 @@ static const void * PrepareBufferForHash( const char * inputBuffer, size_t input
     return h;
 }
 
-/*static*/ uint64_t FBuild::Hash64( const void * buffer, size_t len )
+/*static*/ uint64_t FBuild::Hash64( const AString & rootPath, const void * buffer, size_t len )
 {
     size_t hashLen = 0;
-    const void * bufferForHash = PrepareBufferForHash( (const char *)buffer, len, hashLen );
+    const void * bufferForHash = RootPathSubstitution( rootPath, (const char *)buffer, len, hashLen );
     const uint64_t h = xxHash::Calc64( bufferForHash, hashLen );
     if ( bufferForHash == buffer )
     {

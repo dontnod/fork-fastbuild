@@ -33,6 +33,7 @@ REFLECT_STRUCT_BEGIN( ToolManifest, Struct, MetaNone() )
     REFLECT(        m_MainExecutableRootPath,       "MainExecutableRootPath",       MetaHidden() )
     REFLECT_ARRAY_OF_STRUCT( m_Files,               "Files",    ToolManifestFile,   MetaHidden() )
     REFLECT_ARRAY(  m_CustomEnvironmentVariables,   "CustomEnvironmentVariables",   MetaHidden() )
+    REFLECT(        m_BffRootPath,                  "BffRootPath",                  MetaHidden() )
 REFLECT_END( ToolManifest )
 
 REFLECT_STRUCT_BEGIN( ToolManifestFile, Struct, MetaNone() )
@@ -141,7 +142,7 @@ bool ToolManifestFile::DoBuild()
     m_UncompressedContentSize = uncompressedContentSize;
 
     // Store the hash and timestamp
-    m_Hash = FBuild::Hash32( uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
+    m_Hash = FBuild::Hash32( m_BffRootPath, uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
     m_TimeStamp = FileIO::GetFileLastWriteTime( m_Name );
 
     // Compress and keep the data if it might be useful
@@ -188,6 +189,7 @@ bool ToolManifest::DoBuild( const Dependencies & dependencies )
     (void)dependencies;
 
     m_TimeStamp = 0;
+    m_BffRootPath = FBuild::Get().GetRootPath();
 
     // Get timestamps and hashes
     for ( ToolManifestFile & file : m_Files )
@@ -214,10 +216,10 @@ bool ToolManifest::DoBuild( const Dependencies & dependencies )
         // file name & sub-path (relative to remote folder)
         AStackString<> relativePath;
         GetRelativePath( m_MainExecutableRootPath, f.GetName(), relativePath );
-        *pos = FBuild::Hash32( relativePath );
+        *pos = FBuild::Hash32( m_BffRootPath, relativePath );
         ++pos;
     }
-    m_ToolId = FBuild::Hash64( mem, memSize );
+    m_ToolId = FBuild::Hash64( m_BffRootPath, mem, memSize );
     FREE( mem );
 
     // update time stamp (most recent file in manifest)
@@ -253,6 +255,7 @@ void ToolManifest::SerializeForRemote( IOStream & ms ) const
 {
     ms.Write( m_ToolId );
     ms.Write( m_MainExecutableRootPath );
+    ms.Write( m_BffRootPath );
 
     const uint32_t numItems( (uint32_t)m_Files.GetSize() );
     ms.Write( numItems );
@@ -280,6 +283,7 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
 {
     ms.Read( m_ToolId );
     ms.Read( m_MainExecutableRootPath );
+    ms.Read( m_BffRootPath );
 
     ASSERT( m_Files.IsEmpty() );
 
@@ -335,7 +339,7 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
         {
             continue; // problem reading file
         }
-        if( FBuild::Hash32( mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].GetHash() )
+        if( FBuild::Hash32( m_BffRootPath, mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].GetHash() )
         {
             continue; // file contents unexpected
         }
