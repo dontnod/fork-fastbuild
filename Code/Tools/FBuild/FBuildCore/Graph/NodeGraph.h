@@ -58,7 +58,7 @@ public:
     }
     inline ~NodeGraphHeader() = default;
 
-    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 148 };
+    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 148+1/* PQU: increments graph version for path agnostic hash support (see FBuild.cpp) */ };
 
     bool IsValid() const
     {
