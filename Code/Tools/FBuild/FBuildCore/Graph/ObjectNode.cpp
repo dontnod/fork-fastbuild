@@ -1084,7 +1084,7 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
 
     // hash the pre-processed input data
     ASSERT( job->GetData() );
-    const uint64_t preprocessedSourceKey = FBuild::Hash32( job->GetData(), job->GetDataSize() );
+    const uint64_t preprocessedSourceKey = FBuild::Hash64( job->GetData(), job->GetDataSize() );
 
     // hash the build "environment"
     // TODO:B Exclude preprocessor control defines (the preprocessed input has considered those already)
