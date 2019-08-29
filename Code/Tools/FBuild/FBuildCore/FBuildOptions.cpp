@@ -464,7 +464,7 @@ void FBuildOptions::SetWorkingDir( const AString & path )
         AStackString<> canonicalPath( m_WorkingDir );
     #endif
 
-    m_WorkingDirHash = xxHash::Calc32( canonicalPath );
+    m_WorkingDirHash = FBuild::Hash32( canonicalPath );
     m_ProcessMutexName.Format( "Global\\FASTBuild-0x%08x", m_WorkingDirHash );
     m_FinalProcessMutexName.Format( "Global\\FASTBuild_Final-0x%08x", m_WorkingDirHash );
     m_SharedMemoryName.Format( "FASTBuildSharedMemory_%08x", m_WorkingDirHash );

@@ -835,7 +835,7 @@ bool BFFParser::ParseIncludeDirective( BFFIterator & iter )
         Error::Error_1033_ErrorReadingInclude( stringStart, include, Env::GetLastErr() );
         return false;
     }
-    const uint64_t includeDataHash = xxHash::Calc64( mem.Get(), fileSize );
+    const uint64_t includeDataHash = FBuild::Hash64( mem.Get(), fileSize );
     mem.Get()[ fileSize ] = '\000'; // sentinel
     BFFParser parser( m_NodeGraph );
     const bool pushStackFrame = false; // include is treated as if injected at this point
