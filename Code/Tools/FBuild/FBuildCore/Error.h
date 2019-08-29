@@ -7,6 +7,9 @@
 #include "Tools/FBuild/FBuildCore/Graph/Node.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFVariable.h"
 
+// Core
+#include "Core/Env/MSVCStaticAnalysis.h"
+
 // Forward Declarations
 //------------------------------------------------------------------------------
 class AString;
@@ -200,6 +203,8 @@ public:
     static void Error_1501_CompilerFamilyUnrecognized( const BFFIterator & iter,
                                                        const Function * function,
                                                        const AString & badCompilerFamily );
+    static void Error_1502_LightCacheIncompatibleWithCompiler( const BFFIterator & iter,
+                                                               const Function * function );
 
     // 1900-1999 : User-generate errors
     //------------------------------------------------------------------------------
@@ -211,7 +216,7 @@ private:
     static void FormatError( const BFFIterator & iter,
                              uint32_t errNum,
                              const Function * function,
-                             const char * message, ... ) FORMAT_STRING( 4, 5 );
+                             MSVC_SAL_PRINTF const char * message, ... ) FORMAT_STRING( 4, 5 );
 };
 
 //------------------------------------------------------------------------------

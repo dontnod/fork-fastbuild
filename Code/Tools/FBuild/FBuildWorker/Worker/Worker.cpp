@@ -20,6 +20,7 @@
 #include "Tools/FBuild/FBuildCore/WorkerPool/WorkerThreadRemote.h"
 
 #include "Core/Env/Env.h"
+#include "Core/Env/ErrorFormat.h"
 #include "Core/FileIO/FileIO.h"
 #include "Core/Network/NetworkStartupHelper.h"
 #include "Core/Process/Process.h"
@@ -51,7 +52,7 @@ Worker::Worker( void * hInstance, const AString & args, bool consoleMode )
         #if __WINDOWS__
             VERIFY( ::AllocConsole() );
             PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
-            (void)freopen("CONOUT$", "w", stdout); // TODO:C consider using freopen_s
+            VERIFY( freopen("CONOUT$", "w", stdout) ); // TODO:C consider using freopen_s
             PRAGMA_DISABLE_POP_MSVC // 4996
         #endif
     }
@@ -130,7 +131,7 @@ int Worker::Work()
         #endif
         if ( !FileIO::EnsurePathExists( tmpPath ) )
         {
-            ErrorMessage( "Failed to initialize tmp folder.  Error: 0x%x", Env::GetLastErr() );
+            ErrorMessage( "Failed to initialize tmp folder. Error: %s", LAST_ERROR_STR );
             return -2;
         }
         #if defined( __WINDOWS__ )
@@ -140,7 +141,7 @@ int Worker::Work()
         #endif
         if ( !m_TargetIncludeFolderLock.Open( tmpPath.Get(), FileStream::WRITE_ONLY ) )
         {
-            ErrorMessage( "Failed to lock tmp folder.  Error: 0x%x", Env::GetLastErr() );
+            ErrorMessage( "Failed to lock tmp folder. Error: %s", LAST_ERROR_STR );
             return -2;
         }
     }
@@ -232,6 +233,18 @@ void Worker::UpdateAvailability()
         case WorkerSettings::WHEN_IDLE:
         {
             if ( m_IdleDetection.IsIdle() == false )
+            {
+                numCPUsToUse = 0;
+            }
+            break;
+        }
+        case WorkerSettings::PROPORTIONAL:
+        {
+            if ( ( m_IdleDetection.IsIdleFloat() >= 0.0f ) && ( m_IdleDetection.IsIdleFloat() <= 1.0f ) )
+            {
+                numCPUsToUse = uint32_t(numCPUsToUse * m_IdleDetection.IsIdleFloat());
+            }
+            else
             {
                 numCPUsToUse = 0;
             }
@@ -374,7 +387,7 @@ void Worker::CheckForExeUpdate()
 
 // StatusMessage
 //------------------------------------------------------------------------------
-void Worker::StatusMessage( const char * fmtString, ... ) const
+void Worker::StatusMessage( MSVC_SAL_PRINTF const char * fmtString, ... ) const
 {
     // Status Messages are only shown in console mode
     if ( InConsoleMode() == false )
@@ -406,7 +419,7 @@ void Worker::StatusMessage( const char * fmtString, ... ) const
 
 // ErrorMessage
 //------------------------------------------------------------------------------
-void Worker::ErrorMessage( const char * fmtString, ... ) const
+void Worker::ErrorMessage( MSVC_SAL_PRINTF const char * fmtString, ... ) const
 {
     AStackString<> buffer;
 

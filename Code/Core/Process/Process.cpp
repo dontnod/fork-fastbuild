@@ -3,13 +3,12 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Core/PrecompiledHeader.h"
-
 #include "Process.h"
 
 #include "Core/Env/Assert.h"
 #include "Core/FileIO/FileIO.h"
 #include "Core/Math/Conversions.h"
+#include "Core/Process/Atomic.h"
 #include "Core/Process/Thread.h"
 #include "Core/Profile/Profile.h"
 #include "Core/Time/Timer.h"
@@ -18,7 +17,7 @@
 #include "Core/Tracing/Tracing.h"
 
 #if defined( __WINDOWS__ )
-    #include <Windows.h>
+    #include "Core/Env/WindowsHeader.h"
     #include <TlHelp32.h>
 #endif
 
@@ -158,8 +157,8 @@ void Process::KillProcessTree()
             ::CloseHandle( hChildProc );
         }
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
-        // TODO: Kill process tree if necessary?
-        kill( m_ChildPID, SIGTERM );
+        // Kill all processes in the process group of the child process.
+        kill( -m_ChildPID, SIGKILL );
     #else
         #error Unknown platform
     #endif
@@ -178,7 +177,7 @@ bool Process::Spawn( const char * executable,
     ASSERT( !m_Started );
     ASSERT( executable );
 
-    if ( m_MasterAbortFlag && ( *m_MasterAbortFlag ) )
+    if ( m_MasterAbortFlag && AtomicLoadRelaxed( m_MasterAbortFlag ) )
     {
         // Once master process has aborted, we no longer permit spawning sub-processes.
         return false;
@@ -355,6 +354,11 @@ bool Process::Spawn( const char * executable,
         const bool isChild = ( childProcessPid == 0 );
         if ( isChild )
         {
+            // Put child process into its own process group.
+            // This will allow as to send signals to the whole group which we use to implement KillProcessTree.
+            // The new process group will have ID equal to the PID of the child process.
+            VERIFY( setpgid( 0, 0 ) == 0 );
+
             VERIFY( dup2( stdOutPipeFDs[ 1 ], STDOUT_FILENO ) != -1 );
             VERIFY( dup2( stdErrPipeFDs[ 1 ], STDERR_FILENO ) != -1 );
 
@@ -463,7 +467,7 @@ bool Process::IsRunning() const
 
 // WaitForExit
 //------------------------------------------------------------------------------
-int Process::WaitForExit()
+int32_t Process::WaitForExit()
 {
     ASSERT( m_Started );
     m_Started = false;
@@ -493,7 +497,7 @@ int Process::WaitForExit()
         VERIFY( ::CloseHandle( GetProcessInfo().hProcess ) );
         VERIFY( ::CloseHandle( GetProcessInfo().hThread ) );
 
-        return exitCode;
+        return (int32_t)exitCode;
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
         VERIFY( close( m_StdOutRead ) == 0 );
         VERIFY( close( m_StdErrRead ) == 0 );
@@ -578,8 +582,8 @@ bool Process::ReadAllData( AutoPtr< char > & outMem, uint32_t * outMemSize,
     bool processExited = false;
     for ( ;; )
     {
-        const bool masterAbort = ( m_MasterAbortFlag && ( *m_MasterAbortFlag ) );
-        const bool abort = ( m_AbortFlag && ( *m_AbortFlag ) );
+        const bool masterAbort = ( m_MasterAbortFlag && AtomicLoadRelaxed( m_MasterAbortFlag ) );
+        const bool abort = ( m_AbortFlag && AtomicLoadRelaxed( m_AbortFlag ) );
         if ( abort || masterAbort )
         {
             PROFILE_SECTION( "Abort" )
@@ -878,7 +882,7 @@ bool Process::ReadAllData( AutoPtr< char > & outMem, uint32_t * outMemSize,
     #elif defined( __LINUX__ )
         return ::getpid();
     #elif defined( __OSX__ )
-        return 0; // TODO: Implement GetCurrentId()
+        return ::getpid();
     #endif
 }
 

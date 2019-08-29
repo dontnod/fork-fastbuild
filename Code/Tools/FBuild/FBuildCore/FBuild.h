@@ -39,6 +39,7 @@ public:
     bool Initialize( const char * nodeGraphDBFile = nullptr );
 
     // build a target
+    bool Build( const char * target );
     bool Build( const AString & target );
     bool Build( const Array< AString > & targets );
     bool Build( Node * nodeToBuild );
@@ -62,8 +63,9 @@ public:
     const AString& GetRootPath() const { return m_RootPath; }
     void SetRootPath( const AString& rootPath ) { m_RootPath = rootPath; }
 
-    void DisplayTargetList() const;
+    void DisplayTargetList( bool showHidden ) const;
     bool DisplayDependencyDB( const Array< AString > & targets ) const;
+    bool GenerateCompilationDatabase( const Array< AString > & targets ) const;
 
     class EnvironmentVarAndHash
     {
@@ -94,7 +96,7 @@ public:
     // attempt to cleanly stop the build
     static        void AbortBuild();
     static        void OnBuildError();
-    static inline bool GetStopBuild() { return s_StopBuild; }
+    static        bool GetStopBuild();
     static inline volatile bool * GetAbortBuildPointer() { return &s_AbortBuild; }
 
     inline ICache * GetCache() const { return m_Cache; }
@@ -111,7 +113,7 @@ public:
     inline static uint32_t Hash32( const AString & string ) { return Hash32( string.Get(), string.GetLength() ); }
     inline static uint64_t Hash64( const AString & string ) { return Hash64( string.Get(), string.GetLength() ); }
 
-private:
+protected:
     bool GetTargets( const Array< AString > & targets, Dependencies & outDeps ) const;
 
     void UpdateBuildStatus( const Node * node );

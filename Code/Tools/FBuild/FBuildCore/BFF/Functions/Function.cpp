@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "Function.h"
 #include "FunctionAlias.h"
 #include "FunctionCompiler.h"
@@ -22,11 +20,11 @@
 #include "FunctionPrint.h"
 #include "FunctionRemoveDir.h"
 #include "FunctionSettings.h"
-#include "FunctionSLN.h"
 #include "FunctionTest.h"
 #include "FunctionUnity.h"
 #include "FunctionUsing.h"
 #include "FunctionVCXProject.h"
+#include "FunctionVSSolution.h"
 #include "FunctionXCodeProject.h"
 
 #include "Tools/FBuild/FBuildCore/BFF/BFFIterator.h"
@@ -60,31 +58,15 @@
 
 // Static
 //------------------------------------------------------------------------------
-/*static*/ Function * Function::s_FirstFunction = nullptr;
+/*static*/ Array<const Function *> g_Functions( 22, false );
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 Function::Function( const char * name )
-: m_NextFunction( nullptr )
-, m_Name( name )
+: m_Name( name )
 , m_Seen( false )
 , m_AliasForFunction( 256 )
 {
-    if ( s_FirstFunction == nullptr )
-    {
-        s_FirstFunction = this;
-        return;
-    }
-    Function * func = s_FirstFunction;
-    while ( func )
-    {
-        if ( func->m_NextFunction == nullptr )
-        {
-            func->m_NextFunction = this;
-            return;
-        }
-        func = func->m_NextFunction;
-    }
 }
 
 // DESTRUCTOR
@@ -95,14 +77,12 @@ Function::~Function() = default;
 //------------------------------------------------------------------------------
 /*static*/ const Function * Function::Find( const AString & name )
 {
-    Function * func = s_FirstFunction;
-    while ( func )
+    for ( const Function * func : g_Functions )
     {
         if ( func->GetName() == name )
         {
             return func;
         }
-        func = func->m_NextFunction;
     }
     return nullptr;
 }
@@ -111,42 +91,39 @@ Function::~Function() = default;
 //------------------------------------------------------------------------------
 /*static*/ void Function::Create()
 {
-    FNEW( FunctionAlias );
-    FNEW( FunctionCompiler );
-    FNEW( FunctionCopy );
-    FNEW( FunctionCopyDir );
-    FNEW( FunctionCSAssembly );
-    FNEW( FunctionDLL );
-    FNEW( FunctionError );
-    FNEW( FunctionExec );
-    FNEW( FunctionExecutable );
-    FNEW( FunctionForEach );
-    FNEW( FunctionIf );
-    FNEW( FunctionLibrary );
-    FNEW( FunctionPrint );
-    FNEW( FunctionRemoveDir );
-    FNEW( FunctionSettings );
-    FNEW( FunctionSLN );
-    FNEW( FunctionTest );
-    FNEW( FunctionUnity );
-    FNEW( FunctionUsing );
-    FNEW( FunctionVCXProject );
-    FNEW( FunctionObjectList );
-    FNEW( FunctionXCodeProject );
+    g_Functions.Append( FNEW( FunctionAlias ) );
+    g_Functions.Append( FNEW( FunctionCompiler ) );
+    g_Functions.Append( FNEW( FunctionCopy ) );
+    g_Functions.Append( FNEW( FunctionCopyDir ) );
+    g_Functions.Append( FNEW( FunctionCSAssembly ) );
+    g_Functions.Append( FNEW( FunctionDLL ) );
+    g_Functions.Append( FNEW( FunctionError ) );
+    g_Functions.Append( FNEW( FunctionExec ) );
+    g_Functions.Append( FNEW( FunctionExecutable ));
+    g_Functions.Append( FNEW( FunctionForEach ) );
+    g_Functions.Append( FNEW( FunctionIf ) );
+    g_Functions.Append( FNEW( FunctionLibrary ) );
+    g_Functions.Append( FNEW( FunctionObjectList ) );
+    g_Functions.Append( FNEW( FunctionPrint ) );
+    g_Functions.Append( FNEW( FunctionRemoveDir ) );
+    g_Functions.Append( FNEW( FunctionSettings ) );
+    g_Functions.Append( FNEW( FunctionTest ) );
+    g_Functions.Append( FNEW( FunctionUnity ) );
+    g_Functions.Append( FNEW( FunctionUsing ) );
+    g_Functions.Append( FNEW( FunctionVCXProject ) );
+    g_Functions.Append( FNEW( FunctionVSSolution ) );
+    g_Functions.Append( FNEW( FunctionXCodeProject ) );
 }
 
 // Destroy
 //------------------------------------------------------------------------------
 /*static*/ void Function::Destroy()
 {
-    Function * func = s_FirstFunction;
-    while ( func )
+    for ( const Function * func : g_Functions )
     {
-        Function * nextFunc = func->m_NextFunction;
         FDELETE func;
-        func = nextFunc;
     }
-    s_FirstFunction = nullptr;
+    g_Functions.Clear();
 }
 
 // AcceptsHeader
@@ -196,33 +173,47 @@ Function::~Function() = default;
 {
     m_AliasForFunction.Clear();
     if ( AcceptsHeader() &&
-         functionHeaderStartToken && functionHeaderStopToken &&
-         ( functionHeaderStartToken->GetDistTo( *functionHeaderStopToken ) > 1 ) )
+         functionHeaderStartToken && functionHeaderStopToken )
     {
+        ASSERT( *functionHeaderStartToken < *functionHeaderStopToken );
+
         // find opening quote
         BFFIterator start( *functionHeaderStartToken );
         ASSERT( *start == BFFParser::BFF_FUNCTION_ARGS_OPEN );
         start++;
         start.SkipWhiteSpace();
-        if ( !start.IsAtString() )
+        BFFIterator stop( start );
+        if ( start.IsAtString() )
+        {
+            stop.SkipString();
+            ASSERT( stop.GetCurrent() <= functionHeaderStopToken->GetCurrent() ); // should not be in this function if strings are not validly terminated
+            if ( start.GetDistTo( stop ) <= 1 )
+            {
+                Error::Error_1003_EmptyStringNotAllowedInHeader( start, this );
+                return false;
+            }
+
+            // store alias name for use in Commit
+            start++; // skip past opening quote
+            if ( BFFParser::PerformVariableSubstitutions( start, stop, m_AliasForFunction ) == false )
+            {
+                return false; // substitution will have emitted an error
+            }
+
+            stop++; // skip closing quote for the next check
+        }
+        else if ( NeedsHeader() )
         {
             Error::Error_1001_MissingStringStartToken( start, this );
             return false;
         }
-        BFFIterator stop( start );
-        stop.SkipString();
-        ASSERT( stop.GetCurrent() <= functionHeaderStopToken->GetCurrent() ); // should not be in this function if strings are not validly terminated
-        if ( start.GetDistTo( stop ) <= 1 )
-        {
-            Error::Error_1003_EmptyStringNotAllowedInHeader( start, this );
-            return false;
-        }
 
-        // store alias name for use in Commit
-        start++; // skip past opening quote
-        if ( BFFParser::PerformVariableSubstitutions( start, stop, m_AliasForFunction ) == false )
+        // make sure there are no extraneous tokens
+        stop.SkipWhiteSpaceAndComments();
+        if ( *stop != BFFParser::BFF_FUNCTION_ARGS_CLOSE )
         {
-            return false; // substitution will have emitted an error
+            Error::Error_1002_MatchingClosingTokenNotFound( stop, this, BFFParser::BFF_FUNCTION_ARGS_CLOSE );
+            return false;
         }
     }
 
@@ -916,7 +907,7 @@ bool Function::GetNameForNode( NodeGraph & nodeGraph, const BFFIterator & iter, 
     }
     if ( variable->IsString() )
     {
-        Array< AString > strings;
+        StackArray<AString> strings;
         if ( !PopulateStringHelper( nodeGraph, iter, nullptr, ri->HasMetaData< Meta_File >(), nullptr, variable, strings ) )
         {
             return false; // PopulateStringHelper will have emitted an error
@@ -1230,7 +1221,7 @@ bool Function::PopulatePathAndFileHelper( const BFFIterator & iter,
 //------------------------------------------------------------------------------
 bool Function::PopulateArrayOfStrings( NodeGraph & nodeGraph, const BFFIterator & iter, void * base, const ReflectedProperty & property, const BFFVariable * variable, bool required ) const
 {
-    Array< AString > strings;
+    StackArray<AString> strings;
     if ( !PopulateStringHelper( nodeGraph, iter, property.HasMetaData< Meta_Path >(), property.HasMetaData< Meta_File >(), property.HasMetaData< Meta_AllowNonFile >(), variable, strings ) )
     {
         return false; // PopulateStringHelper will have emitted an error
@@ -1261,7 +1252,7 @@ bool Function::PopulateArrayOfStrings( NodeGraph & nodeGraph, const BFFIterator 
 //------------------------------------------------------------------------------
 bool Function::PopulateString( NodeGraph & nodeGraph, const BFFIterator & iter, void * base, const ReflectedProperty & property, const BFFVariable * variable, bool required ) const
 {
-    Array< AString > strings;
+    StackArray<AString> strings;
     if ( !PopulateStringHelper( nodeGraph, iter, property.HasMetaData< Meta_Path >(), property.HasMetaData< Meta_File >(), property.HasMetaData< Meta_AllowNonFile >(), variable, strings ) )
     {
         return false; // PopulateStringHelper will have emitted an error

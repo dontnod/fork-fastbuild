@@ -3,11 +3,10 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "FunctionForEach.h"
 
 #include "Tools/FBuild/FBuildCore/BFF/BFFIterator.h"
+#include "Tools/FBuild/FBuildCore/BFF/BFFKeywords.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFParser.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFStackFrame.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFVariable.h"
@@ -46,8 +45,8 @@ FunctionForEach::FunctionForEach()
                     const BFFIterator * functionHeaderStopToken ) const
 {
     // build array for each pair to loop through
-    Array< AString >                localNames( 4, true );
-    Array< const BFFVariable * >    arrayVars( 4, true );
+    StackArray<AString> localNames;
+    StackArray<const BFFVariable *> arrayVars;
 
     int loopLen = -1;
 
@@ -77,7 +76,7 @@ FunctionForEach::FunctionForEach()
         pos.SkipWhiteSpace();
 
         // check for required "in" token
-        if ( pos.ParseExactString( "in" ) == false )
+        if ( pos.ParseExactString( BFF_KEYWORD_IN ) == false )
         {
             Error::Error_1201_MissingIn( pos, this );
             return false;

@@ -52,7 +52,9 @@ class ReflectionInfo;
     const ReflectionInfo * className::s_ReflectionInfo( nullptr ); \
     const ReflectionInfo * className::GetReflectionInfoS() \
     { \
+        PRAGMA_DISABLE_PUSH_MSVC( 4946 ) \
         return reinterpret_cast< const ReflectionInfo * >( &g_##className##_ReflectionInfo ); \
+        PRAGMA_DISABLE_POP_MSVC \
     } \
     class className##_ReflectionInfo : public ReflectionInfo \
     { \
@@ -89,20 +91,12 @@ class ReflectionInfo;
         return className::GetReflectionInfoS(); \
     } \
     REFLECT_BEGIN_COMMON( className, baseClass, metaData, 0, false ) \
-        virtual void * Create() const override \
-        { \
-            return FNEW( className ); \
-        } \
         void AddProperties() \
         { \
             CHECK_BASE_CLASS( className, baseClass )
 
 #define REFLECT_STRUCT_BEGIN( structName, baseStruct, metaData ) \
     REFLECT_BEGIN_COMMON( structName, baseStruct, metaData, sizeof( structName ), false ) \
-        virtual void * Create() const override \
-        { \
-            return FNEW( structName ); \
-        } \
         virtual void SetArraySizeV( void * array, size_t size ) const override \
         { \
             Array< structName > * realArray = static_cast< Array< structName > * >( array ); \
@@ -120,10 +114,6 @@ class ReflectionInfo;
 
 #define REFLECT_STRUCT_BEGIN_BASE( structName ) \
     REFLECT_BEGIN_COMMON( structName, Struct, MetaNone(), sizeof( structName ), false ) \
-        virtual void * Create() const override \
-        { \
-            return FNEW( structName ); \
-        } \
         virtual void SetArraySizeV( void * array, size_t size ) const override \
         { \
             Array< structName > * realArray = static_cast< Array< structName > * >( array ); \
@@ -155,10 +145,6 @@ class ReflectionInfo;
 #define REFLECT_END( className ) \
         } \
     }; \
-    className##_ReflectionInfo g_##className##_ReflectionInfo; \
-    void className##_ReflectionInfo_Bind() \
-    { \
-        ReflectionInfo::BindReflection( g_##className##_ReflectionInfo ); \
-    }
+    className##_ReflectionInfo g_##className##_ReflectionInfo;
 
 //------------------------------------------------------------------------------

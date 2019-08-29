@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "ToolManifest.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 
@@ -17,6 +15,7 @@
 #include "Core/FileIO/MemoryStream.h"
 #include "Core/FileIO/PathUtils.h"
 #include "Core/Math/xxHash.h"
+#include "Core/Profile/Profile.h"
 #include "Core/Strings/AStackString.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
@@ -29,19 +28,19 @@
 // Reflection
 //------------------------------------------------------------------------------
 REFLECT_STRUCT_BEGIN( ToolManifest, Struct, MetaNone() )
-    REFLECT(        m_ToolId,                       "ToolId",                       MetaNone() )
-    REFLECT(        m_TimeStamp,                    "TimeStamp",                    MetaNone() )
-    REFLECT(        m_MainExecutableRootPath,       "MainExecutableRootPath",       MetaNone() )
-    REFLECT_ARRAY_OF_STRUCT( m_Files,               "Files",    ToolManifestFile,   MetaNone() )
-    REFLECT_ARRAY(  m_CustomEnvironmentVariables,   "CustomEnvironmentVariables",   MetaNone() )
+    REFLECT(        m_ToolId,                       "ToolId",                       MetaHidden() )
+    REFLECT(        m_TimeStamp,                    "TimeStamp",                    MetaHidden() )
+    REFLECT(        m_MainExecutableRootPath,       "MainExecutableRootPath",       MetaHidden() )
+    REFLECT_ARRAY_OF_STRUCT( m_Files,               "Files",    ToolManifestFile,   MetaHidden() )
+    REFLECT_ARRAY(  m_CustomEnvironmentVariables,   "CustomEnvironmentVariables",   MetaHidden() )
 REFLECT_END( ToolManifest )
 
 REFLECT_STRUCT_BEGIN( ToolManifestFile, Struct, MetaNone() )
-    REFLECT( m_Name,        "Name",         MetaNone() )
-    REFLECT( m_TimeStamp,   "TimeStamp",    MetaNone() )
-    REFLECT( m_Hash,        "Hash",         MetaNone() )
-    REFLECT( m_UncompressedContentSize, "UncompressedContentSize",  MetaNone() )
-    REFLECT( m_CompressedContentSize, "CompressedContentSize",  MetaNone() )
+    REFLECT( m_Name,        "Name",         MetaHidden() )
+    REFLECT( m_TimeStamp,   "TimeStamp",    MetaHidden() )
+    REFLECT( m_Hash,        "Hash",         MetaHidden() )
+    REFLECT( m_UncompressedContentSize, "UncompressedContentSize",  MetaHidden() )
+    REFLECT( m_CompressedContentSize, "CompressedContentSize",  MetaHidden() )
 REFLECT_END( ToolManifestFile )
 
 // CONSTRUCTOR (ToolManifestFile)
@@ -96,10 +95,11 @@ ToolManifest::~ToolManifest()
     FREE( (void *)m_RemoteEnvironmentString );
 }
 
-// StoreCompressedContent (File)
+// StoreCompressedContent (ToolManifestFile)
 //------------------------------------------------------------------------------
 void ToolManifestFile::StoreCompressedContent( const void * uncompressedData, const uint32_t uncompressedDataSize ) const
 {
+    ASSERT( m_CompressedContent == nullptr );
     m_UncompressedContentSize = uncompressedDataSize;
     Compressor c;
     c.Compress( uncompressedData, m_UncompressedContentSize );
@@ -107,24 +107,94 @@ void ToolManifestFile::StoreCompressedContent( const void * uncompressedData, co
     m_CompressedContent = c.ReleaseResult();
 }
 
+// DoBuild
+//------------------------------------------------------------------------------
+bool ToolManifestFile::DoBuild()
+{
+    // Name should be set
+    ASSERT( m_Name.IsEmpty() == false );
+
+    // Should not have any file data in memory
+    ASSERT( m_CompressedContent == nullptr );
+    ASSERT( m_CompressedContentSize == 0 );
+
+    // Do we already have a hash?
+    if ( m_Hash != 0 )
+    {
+        // Can we trust the hash? (timestamp has not changed)
+        if ( m_TimeStamp == FileIO::GetFileLastWriteTime( m_Name ) )
+        {
+            // Nothing to do
+            return true;
+        }
+    }
+
+    // Load the file content
+    void * uncompressedContent;
+    uint32_t uncompressedContentSize;
+    if ( LoadFile( uncompressedContent, uncompressedContentSize ) == false )
+    {
+        return false; // LoadFile emits an error
+    }
+
+    // Take note of the uncompressed size
+    m_UncompressedContentSize = uncompressedContentSize;
+
+    // Store the hash and timestamp
+    m_Hash = FBuild::Hash32( uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
+    m_TimeStamp = FileIO::GetFileLastWriteTime( m_Name );
+
+    // Compress and keep the data if it might be useful
+    if ( FBuild::Get().GetOptions().m_AllowDistributed )
+    {
+        StoreCompressedContent( uncompressedContent, uncompressedContentSize );
+    }
+
+    FREE( uncompressedContent );
+
+    return true;
+}
+
+// Migrate
+//------------------------------------------------------------------------------
+void ToolManifestFile::Migrate( const ToolManifestFile & oldFile )
+{
+    ASSERT( m_Name == oldFile.m_Name );
+    m_TimeStamp = oldFile.m_TimeStamp;
+    m_Hash = oldFile.m_Hash;
+}
+
 // Generate
 //------------------------------------------------------------------------------
-bool ToolManifest::Generate( const AString& mainExecutableRoot, const Dependencies & dependencies, const Array<AString> & customEnvironmentVariables )
+void ToolManifest::Initialize( const AString & mainExecutableRoot, const Dependencies & dependencies, const Array<AString> & customEnvironmentVariables )
 {
     m_MainExecutableRootPath = mainExecutableRoot;
     m_CustomEnvironmentVariables = customEnvironmentVariables;
-    m_Files.Clear();
-    m_TimeStamp = 0;
-    m_Files.SetCapacity( 1 + dependencies.GetSize() );
 
-    // unify "main executable" and "extra files"
-    // (loads contents of file into memory, and creates hashes)
-    for ( size_t i=0; i<dependencies.GetSize(); ++i )
+    // Pre-reserve the list of files, but loading/hashing until later
+    ASSERT( m_Files.IsEmpty() );
+    m_Files.SetCapacity( dependencies.GetSize() );
+    for ( const Dependency & dep : dependencies )
     {
-        const FileNode & n = *( dependencies[ i ].GetNode()->CastTo< FileNode >() );
-        if ( !AddFile( n.GetName(), n.GetStamp() ) )
+        m_Files.Append( ToolManifestFile( dep.GetNode()->GetName(), 0, 0, 0 ) );
+    }
+}
+
+// Generate
+//------------------------------------------------------------------------------
+bool ToolManifest::DoBuild( const Dependencies & dependencies )
+{
+    ASSERT( m_Files.GetSize() == dependencies.GetSize() );
+    (void)dependencies;
+
+    m_TimeStamp = 0;
+
+    // Get timestamps and hashes
+    for ( ToolManifestFile & file : m_Files )
+    {
+        if ( !file.DoBuild() )
         {
-            return false; // AddFile will have emitted error
+            return false; // DoBuild will have emitted an rrror
         }
     }
 
@@ -138,12 +208,12 @@ bool ToolManifest::Generate( const AString& mainExecutableRoot, const Dependenci
         const ToolManifestFile & f = m_Files[ i ];
 
         // file contents
-        *pos = f.m_Hash;
+        *pos = f.GetHash();
         ++pos;
 
         // file name & sub-path (relative to remote folder)
         AStackString<> relativePath;
-        GetRelativePath( m_MainExecutableRootPath, f.m_Name, relativePath );
+        GetRelativePath( m_MainExecutableRootPath, f.GetName(), relativePath );
         *pos = FBuild::Hash32( relativePath );
         ++pos;
     }
@@ -154,11 +224,27 @@ bool ToolManifest::Generate( const AString& mainExecutableRoot, const Dependenci
     for ( size_t i=0; i<numFiles; ++i )
     {
         const ToolManifestFile & f = m_Files[ i ];
-        ASSERT( f.m_TimeStamp ); // should have had an error before if the file was missing
-        m_TimeStamp = Math::Max( m_TimeStamp, f.m_TimeStamp );
+        ASSERT( f.GetTimeStamp() ); // should have had an error before if the file was missing
+        m_TimeStamp = Math::Max( m_TimeStamp, f.GetTimeStamp() );
     }
 
     return true;
+}
+
+// Migrate
+//------------------------------------------------------------------------------
+void ToolManifest::Migrate( const ToolManifest & oldManifest )
+{
+    const size_t numFiles = m_Files.GetSize();
+    const Array< ToolManifestFile > & oldFiles = oldManifest.GetFiles();
+    ASSERT( numFiles == oldFiles.GetSize() );
+    for ( size_t i = 0; i < numFiles; ++i )
+    {
+        m_Files[ i ].Migrate( oldFiles[ i ] );
+    }
+
+    m_TimeStamp = oldManifest.m_TimeStamp;
+    m_ToolId = oldManifest.m_ToolId;
 }
 
 // SerializeForRemote
@@ -174,10 +260,10 @@ void ToolManifest::SerializeForRemote( IOStream & ms ) const
     for ( size_t i=0; i<numFiles; ++i )
     {
         const ToolManifestFile & f = m_Files[ i ];
-        ms.Write( f.m_Name );
-        ms.Write( f.m_TimeStamp );
-        ms.Write( f.m_Hash );
-        ms.Write( f.m_UncompressedContentSize );
+        ms.Write( f.GetName() );
+        ms.Write( f.GetTimeStamp() );
+        ms.Write( f.GetHash() );
+        ms.Write( f.GetUncompressedContentSize() );
     }
 
     const size_t numEnvVars( m_CustomEnvironmentVariables.GetSize() );
@@ -240,7 +326,7 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
         {
             continue; // file not found
         }
-        if ( f.GetFileSize() != m_Files[ i ].m_UncompressedContentSize )
+        if ( f.GetFileSize() != m_Files[ i ].GetUncompressedContentSize() )
         {
             continue; // file is not complete
         }
@@ -249,14 +335,14 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
         {
             continue; // problem reading file
         }
-        if( FBuild::Hash32( mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].m_Hash )
+        if( FBuild::Hash32( mem.Get(), (size_t)f.GetFileSize() ) != m_Files[ i ].GetHash() )
         {
             continue; // file contents unexpected
         }
 
         // file present and ok
-        m_Files[ i ].m_FileLock = fileStream.Release(); // NOTE: keep file open to prevent deletions
-        m_Files[ i ].m_SyncState = ToolManifestFile::SYNCHRONIZED;
+        m_Files[ i ].SetFileLock( fileStream.Release() ); // NOTE: keep file open to prevent deletions
+        m_Files[ i ].SetSyncState( ToolManifestFile::SYNCHRONIZED );
         numFilesAlreadySynchronized++;
     }
 
@@ -324,11 +410,11 @@ void ToolManifest::DeserializeFromRemote( IOStream & ms )
         const char * token = envVar.Find( "%1" );
         if ( token )
         {
-            AString::Copy( envVar.Get(), mem, ( token - envVar.Get() ) );   // Copy the data up to the token
+            AString::Copy( envVar.Get(), mem, (size_t)( token - envVar.Get() ) );   // Copy the data up to the token
             mem += ( token - envVar.Get() );
             AString::Copy( basePath.Get(), mem, basePath.GetLength() );     // Append the basePath instead of the token
             mem += basePath.GetLength();
-            AString::Copy( token + 2, mem, envVar.GetLength() - 2 - ( token - envVar.Get() ) + 1 ); // Append the trailing portion of the string.
+            AString::Copy( token + 2, mem, (size_t)( envVar.GetLength() - 2 - ( token - envVar.Get() ) + 1 ) ); // Append the trailing portion of the string.
             mem += ( envVar.GetLength() - 2 - ( token - envVar.Get() ) + 1 );
         }
         else
@@ -361,12 +447,12 @@ bool ToolManifest::GetSynchronizationStatus( uint32_t & syncDone, uint32_t & syn
     const ToolManifestFile * const end = m_Files.End();
     for ( const ToolManifestFile * it = m_Files.Begin(); it != end; ++it )
     {
-        syncTotal += it->m_UncompressedContentSize;
-        if ( it->m_SyncState == ToolManifestFile::SYNCHRONIZED )
+        syncTotal += it->GetUncompressedContentSize();
+        if ( it->GetSyncState() == ToolManifestFile::SYNCHRONIZED )
         {
-            syncDone += it->m_UncompressedContentSize;
+            syncDone += it->GetUncompressedContentSize();
         }
-        else if ( it->m_SyncState == ToolManifestFile::SYNCHRONIZING )
+        else if ( it->GetSyncState() == ToolManifestFile::SYNCHRONIZING )
         {
             synching = true;
         }
@@ -387,9 +473,9 @@ void ToolManifest::CancelSynchronizingFiles()
     ToolManifestFile * const end = m_Files.End();
     for ( ToolManifestFile * it = m_Files.Begin(); it != end; ++it )
     {
-        if ( it->m_SyncState == ToolManifestFile::SYNCHRONIZING )
+        if ( it->GetSyncState() == ToolManifestFile::SYNCHRONIZING )
         {
-            it->m_SyncState = ToolManifestFile::NOT_SYNCHRONIZED;
+            it->SetSyncState( ToolManifestFile::NOT_SYNCHRONIZED );
             atLeastOneFileCancelled = true;
         }
     }
@@ -404,22 +490,37 @@ void ToolManifest::CancelSynchronizingFiles()
 //------------------------------------------------------------------------------
 const void * ToolManifest::GetFileData( uint32_t fileId, size_t & dataSize ) const
 {
-    const ToolManifestFile & f = m_Files[ fileId ];
-    if ( f.m_CompressedContent == nullptr )
+    return m_Files[ fileId ].GetFileData( dataSize );
+}
+
+// GetFileData (ToolManifestFile)
+//------------------------------------------------------------------------------
+const void * ToolManifestFile::GetFileData( size_t & outDataSize ) const
+{
+    // Should only be possible to access data if we know it's up-to-date
+    ASSERT( m_TimeStamp );
+    ASSERT( m_Hash );
+
+    // Do we have data already available?
+    if ( m_CompressedContent == nullptr )
     {
-        void * uncompressedContent( nullptr );
-        uint32_t uncompressedContentSize( 0 );
-        if ( !LoadFile( f.m_Name, uncompressedContent, uncompressedContentSize ) )
+        // Load the file content
+        void * uncompressedContent;
+        uint32_t uncompressedContentSize;
+        if ( LoadFile( uncompressedContent, uncompressedContentSize ) == false )
         {
-            return nullptr;
+            return nullptr; // LoadFile emits an error
         }
-        // store compressed file content (take ownership of data)
-        f.StoreCompressedContent( uncompressedContent, uncompressedContentSize );
-        // free unused uncompressed data
+
+        // We should have previously recorded the uncompressed size
+        ASSERT( uncompressedContentSize == m_UncompressedContentSize );
+
+        // Store the compressed version
+        StoreCompressedContent( uncompressedContent, uncompressedContentSize );
         FREE( uncompressedContent );
     }
-    dataSize = f.m_CompressedContentSize;
-    return f.m_CompressedContent;
+    outDataSize = m_CompressedContentSize;
+    return m_CompressedContent;
 }
 
 // ReceiveFileData
@@ -431,13 +532,12 @@ bool ToolManifest::ReceiveFileData( uint32_t fileId, const void * data, size_t &
     ToolManifestFile & f = m_Files[ fileId ];
 
     // gracefully handle multiple receipts of the same data
-    if ( f.m_CompressedContent )
+    if ( f.GetSyncState() == ToolManifestFile::SYNCHRONIZED )
     {
-        ASSERT( f.m_SyncState == ToolManifestFile::SYNCHRONIZED );
         return true;
     }
 
-    ASSERT( f.m_SyncState == ToolManifestFile::SYNCHRONIZING );
+    ASSERT( f.GetSyncState() == ToolManifestFile::SYNCHRONIZING );
 
     // do decompression
     Compressor c;
@@ -446,7 +546,7 @@ bool ToolManifest::ReceiveFileData( uint32_t fileId, const void * data, size_t &
         FLOG_WARN( "Invalid data received for fileId %u", fileId );
         return false;
     }
-    c.Decompress( data );
+    VERIFY( c.Decompress( data ) );
     const void * uncompressedData = c.GetResult();
     const size_t uncompressedDataSize = c.GetResultSize();
 
@@ -486,14 +586,14 @@ bool ToolManifest::ReceiveFileData( uint32_t fileId, const void * data, size_t &
     }
 
     // This file is now synchronized
-    f.m_FileLock = fileStream.Release(); // NOTE: Keep file open to prevent deletion
-    f.m_SyncState = ToolManifestFile::SYNCHRONIZED;
+    f.SetFileLock( fileStream.Release() ); // NOTE: Keep file open to prevent deletion
+    f.SetSyncState( ToolManifestFile::SYNCHRONIZED );
 
     // is completely synchronized?
     const ToolManifestFile * const end = m_Files.End();
     for ( const ToolManifestFile * it = m_Files.Begin(); it != end; ++it )
     {
-        if ( it->m_SyncState != ToolManifestFile::SYNCHRONIZED )
+        if ( it->GetSyncState() != ToolManifestFile::SYNCHRONIZED )
         {
             // still some files to be received
             return true; // file stored ok
@@ -532,7 +632,7 @@ void ToolManifest::GetRemoteFilePath( uint32_t fileId, AString & remotePath ) co
 
     // Get relative path for file and append
     AStackString<> relativePath;
-    GetRelativePath( m_MainExecutableRootPath, m_Files[ fileId ].m_Name, relativePath );
+    GetRelativePath( m_MainExecutableRootPath, m_Files[ fileId ].GetName(), relativePath );
     remotePath += relativePath;
 }
 
@@ -550,46 +650,22 @@ void ToolManifest::GetRemotePath( AString & path ) const
     path += subDir;
 }
 
-// AddFile
+// LoadFile (ToolManifestFile)
 //------------------------------------------------------------------------------
-bool ToolManifest::AddFile( const AString & fileName, const uint64_t timeStamp )
-{
-    uint32_t uncompressedContentSize( 0 );
-    void * uncompressedContent( nullptr );
-    if ( !LoadFile( fileName, uncompressedContent, uncompressedContentSize ) )
-    {
-        return false; // LoadContent will have emitted an error
-    }
-
-    // create the file entry
-    const uint32_t hash = FBuild::Hash32( uncompressedContent, uncompressedContentSize );
-    m_Files.Append( ToolManifestFile( fileName, timeStamp, hash, uncompressedContentSize ) );
-
-    ToolManifestFile & f = m_Files.Top();
-    // store compressed file content (take ownership of data)
-    f.StoreCompressedContent( uncompressedContent, uncompressedContentSize );
-    // free unused uncompressed data
-    FREE( uncompressedContent );
-
-    return true;
-}
-
-// LoadFile
-//------------------------------------------------------------------------------
-bool ToolManifest::LoadFile( const AString & fileName, void * & uncompressedContent, uint32_t & uncompressedContentSize ) const
+bool ToolManifestFile::LoadFile( void * & uncompressedContent, uint32_t & uncompressedContentSize ) const
 {
     // read the file into memory
     FileStream fs;
-    if ( fs.Open( fileName.Get(), FileStream::READ_ONLY ) == false )
+    if ( fs.Open( m_Name.Get(), FileStream::READ_ONLY ) == false )
     {
-        FLOG_ERROR( "Error: opening file '%s' in Compiler ToolManifest\n", fileName.Get() );
+        FLOG_ERROR( "Error: opening file '%s' in Compiler ToolManifest\n", m_Name.Get() );
         return false;
     }
     uncompressedContentSize = (uint32_t)fs.GetFileSize();
     AutoPtr< void > mem( ALLOC( uncompressedContentSize ) );
     if ( fs.Read( mem.Get(), uncompressedContentSize ) != uncompressedContentSize )
     {
-        FLOG_ERROR( "Error: reading file '%s' in Compiler ToolManifest\n", fileName.Get() );
+        FLOG_ERROR( "Error: reading file '%s' in Compiler ToolManifest\n", m_Name.Get() );
         return false;
     }
 

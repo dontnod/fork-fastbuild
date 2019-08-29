@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "SLNNode.h"
 
 #include "Tools/FBuild/FBuildCore/Error.h"
@@ -16,7 +14,7 @@
 #include "Tools/FBuild/FBuildCore/Helpers/VSProjectGenerator.h"
 
 // Core
-#include "Core/Env/Env.h"
+#include "Core/Env/ErrorFormat.h"
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
 #include "Core/FileIO/PathUtils.h"
@@ -263,6 +261,14 @@ SLNNode::SLNNode()
 //------------------------------------------------------------------------------
 SLNNode::~SLNNode() = default;
 
+// DetermineNeedToBuild
+//------------------------------------------------------------------------------
+/*virtual*/ bool SLNNode::DetermineNeedToBuild( bool /*forceClean*/ ) const
+{
+    // SLNNode always builds, but only writes the result if different
+    return true;
+}
+
 // DoBuild
 //------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult SLNNode::DoBuild( Job * UNUSED( job ) )
@@ -349,12 +355,12 @@ bool SLNNode::Save( const AString & content, const AString & fileName ) const
     FileStream f;
     if ( !f.Open( fileName.Get(), FileStream::WRITE_ONLY ) )
     {
-        FLOG_ERROR( "SLN - Failed to open '%s' for write (error: %u)", fileName.Get(), Env::GetLastErr() );
+        FLOG_ERROR( "SLN - Failed to open file for write. Error: %s Target: '%s'", LAST_ERROR_STR, fileName.Get() );
         return false;
     }
     if ( f.Write( content.Get(), content.GetLength() ) != content.GetLength() )
     {
-        FLOG_ERROR( "SLN - Error writing to '%s' (error: %u)", fileName.Get(), Env::GetLastErr() );
+        FLOG_ERROR( "SLN - Error writing file. Error: %s Target: '%s'", LAST_ERROR_STR, fileName.Get() );
         return false;
     }
     f.Close();

@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "CompilerNode.h"
 
 #include "Tools/FBuild/FBuildCore/FBuild.h"
@@ -28,10 +26,12 @@ REFLECT_NODE_BEGIN( CompilerNode, Node, MetaNone() )
     REFLECT( m_ExecutableRootPath,  "ExecutableRootPath",   MetaOptional() + MetaPath() )
     REFLECT( m_SimpleDistributionMode,  "SimpleDistributionMode",   MetaOptional() )
     REFLECT( m_CompilerFamilyString,"CompilerFamily",       MetaOptional() )
+    REFLECT_ARRAY( m_Environment,   "Environment",          MetaOptional() )
+    REFLECT( m_UseLightCache,       "UseLightCache_Experimental", MetaOptional() )
 
     // Internal
     REFLECT( m_CompilerFamilyEnum,  "CompilerFamilyEnum",   MetaHidden() )
-    REFLECT_STRUCT( m_Manifest,     "Manifest", ToolManifest, MetaHidden() )
+    REFLECT_STRUCT( m_Manifest,     "Manifest", ToolManifest, MetaHidden() + MetaIgnoreForComparison() )
 REFLECT_END( CompilerNode )
 
 // CONSTRUCTOR
@@ -44,6 +44,8 @@ CompilerNode::CompilerNode()
     , m_CompilerFamilyString( "auto" )
     , m_CompilerFamilyEnum( static_cast< uint8_t >( CUSTOM ) )
     , m_SimpleDistributionMode( false )
+    , m_UseLightCache( false )
+    , m_EnvironmentString( nullptr )
 {
 }
 
@@ -113,7 +115,23 @@ CompilerNode::CompilerNode()
     m_StaticDependencies.Append( compilerExeFile );
     m_StaticDependencies.Append( extraFiles );
 
-    return InitializeCompilerFamily( iter, function );
+    if (InitializeCompilerFamily( iter, function ) == false)
+    {
+        return false;
+    }
+
+    // The LightCache is only compatible with MSVC for now
+    // - GCC/Clang can be supported when built in include paths can be extracted
+    //   and -nostdinc/-nostdinc++ is handled
+    if ( m_UseLightCache && ( m_CompilerFamilyEnum != MSVC ) )
+    {
+        Error::Error_1502_LightCacheIncompatibleWithCompiler( iter, function );
+        return false;
+    }
+
+    m_Manifest.Initialize( m_ExecutableRootPath, m_StaticDependencies, m_CustomEnvironmentVariables );
+
+    return true;
 }
 
 // IsAFile
@@ -304,19 +322,40 @@ bool CompilerNode::InitializeCompilerFamily( const BFFIterator & iter, const Fun
 
 // DESTRUCTOR
 //------------------------------------------------------------------------------
-CompilerNode::~CompilerNode() = default;
+CompilerNode::~CompilerNode()
+{
+    FREE( (void *)m_EnvironmentString );
+}
 
 // DoBuild
 //------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult CompilerNode::DoBuild( Job * /*job*/ )
 {
-    if ( !m_Manifest.Generate( m_ExecutableRootPath, m_StaticDependencies, m_CustomEnvironmentVariables ) )
+    if ( !m_Manifest.DoBuild( m_StaticDependencies ) )
     {
         return Node::NODE_RESULT_FAILED; // Generate will have emitted error
     }
 
     m_Stamp = m_Manifest.GetTimeStamp();
     return Node::NODE_RESULT_OK;
+}
+
+// GetEnvironmentString
+//------------------------------------------------------------------------------
+const char * CompilerNode::GetEnvironmentString() const
+{
+    return Node::GetEnvironmentString( m_Environment, m_EnvironmentString );
+}
+
+// Migrate
+//------------------------------------------------------------------------------
+/*virtual*/ void CompilerNode::Migrate( const Node & oldNode )
+{
+    // Migrate Node level properties
+    Node::Migrate( oldNode );
+
+    // Migrate the timestamp/hash info stored for the files in the ToolManifest
+    m_Manifest.Migrate( oldNode.CastTo<CompilerNode>()->GetManifest() );
 }
 
 //------------------------------------------------------------------------------

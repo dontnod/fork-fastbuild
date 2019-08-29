@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "SLNGenerator.h"
 
 #include "Tools/FBuild/FBuildCore/Graph/SLNNode.h"
@@ -15,7 +13,6 @@
 // Core
 #include "Core/FileIO/IOStream.h"
 #include "Core/FileIO/PathUtils.h"
-#include "Core/Math/CRC32.h"
 #include "Core/Strings/AStackString.h"
 
 // system
@@ -380,7 +377,7 @@ void SLNGenerator::WriteFooter()
 
 // Write
 //------------------------------------------------------------------------------
-void SLNGenerator::Write( const char * fmtString, ... )
+void SLNGenerator::Write( MSVC_SAL_PRINTF const char * fmtString, ... )
 {
     AStackString< 1024 > tmp;
 

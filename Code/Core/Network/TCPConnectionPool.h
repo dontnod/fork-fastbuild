@@ -60,7 +60,7 @@ public:
     TCPConnectionPool();
     virtual ~TCPConnectionPool();
 
-    // derived classes must call this from their destructor if they rely on virtual callbacks
+    // Must be called explicitly before destruction
     void ShutdownAllConnections();
 
     // manage connections
@@ -69,7 +69,7 @@ public:
     const ConnectionInfo * Connect( const AString & host, uint16_t port, uint32_t timeout = 2000, void * userData = nullptr );
     const ConnectionInfo * Connect( uint32_t hostIP, uint16_t port, uint32_t timeout = 2000, void * userData = nullptr );
     void Disconnect( const ConnectionInfo * ci );
-    void SetShuttingDown() { m_ShuttingDown = true; }
+    void SetShuttingDown();
 
     // query connection state
     size_t GetNumConnections() const;
@@ -96,7 +96,7 @@ private:
     bool        HandleRead( ConnectionInfo * ci );
 
     // platform specific abstraction
-    int         GetLastError() const;
+    int         GetLastNetworkError() const;
     bool        WouldBlock() const;
     int         CloseSocket( TCPSocket socket ) const;
     int         Select( TCPSocket maxSocketPlusOne,

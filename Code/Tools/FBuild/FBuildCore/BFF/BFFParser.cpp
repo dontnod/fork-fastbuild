@@ -3,10 +3,9 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "BFFParser.h"
 #include "BFFIterator.h"
+#include "BFFKeywords.h"
 #include "BFFMacros.h"
 #include "BFFStackFrame.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
@@ -457,12 +456,12 @@ bool BFFParser::ParseVariableDeclaration( BFFIterator & iter, const AString & va
 
         bool value = false; // just to silence C4701 from MSVC
         ok = false;
-        if ( iter.ParseExactString( "true" ) )
+        if ( iter.ParseExactString( BFF_KEYWORD_TRUE ) )
         {
             value = true;
             ok = true;
         }
-        else if ( iter.ParseExactString( "false" ) )
+        else if ( iter.ParseExactString( BFF_KEYWORD_FALSE ) )
         {
             value = false;
             ok = true;
@@ -620,7 +619,6 @@ bool BFFParser::ParseFunction( BFFIterator & iter )
         functionArgsStopToken = iter;
         hasHeader = true;
         iter++; // skip over closing token
-        iter.SkipWhiteSpaceAndComments();
     }
 
     if ( func->NeedsHeader() && ( hasHeader == false ) )
@@ -628,6 +626,8 @@ bool BFFParser::ParseFunction( BFFIterator & iter )
         Error::Error_1023_FunctionRequiresAHeader( iter, func );
         return false;
     }
+
+    iter.SkipWhiteSpaceAndComments();
 
     // some functions have no body
     bool hasBody = false;
@@ -719,36 +719,36 @@ bool BFFParser::ParsePreprocessorDirective( BFFIterator & iter )
 
     // determine directive
     AStackString< MAX_DIRECTIVE_NAME_LENGTH > directive( directiveStartIter.GetCurrent(), directiveEndIter.GetCurrent() );
-    if ( directive == "include" )
+    if ( directive == BFF_KEYWORD_INCLUDE )
     {
         return ParseIncludeDirective( iter );
     }
-    else if ( directive == "once" )
+    else if ( directive == BFF_KEYWORD_ONCE )
     {
         m_NodeGraph.SetCurrentFileAsOneUse();
         return true;
     }
-    else if ( directive == "define" )
+    else if ( directive == BFF_KEYWORD_DEFINE )
     {
         return ParseDefineDirective( iter );
     }
-    else if ( directive == "undef" )
+    else if ( directive == BFF_KEYWORD_UNDEF )
     {
         return ParseUndefDirective( iter );
     }
-    else if ( directive == "if" )
+    else if ( directive == BFF_KEYWORD_IF )
     {
         return ParseIfDirective( directiveStart, iter );
     }
-    else if ( directive == "else" )
+    else if ( directive == BFF_KEYWORD_ELSE )
     {
         return ParseElseDirective( directiveStartIter );
     }
-    else if ( directive == "endif" )
+    else if ( directive == BFF_KEYWORD_ENDIF )
     {
         return ParseEndIfDirective( directiveStartIter );
     }
-    else if ( directive == "import" )
+    else if ( directive == BFF_KEYWORD_IMPORT )
     {
         return ParseImportDirective( directiveStart, iter );
     }
@@ -772,7 +772,7 @@ bool BFFParser::ParseIncludeDirective( BFFIterator & iter )
     // we expect a " quoted string
     if ( *iter != '"' )
     {
-        Error::Error_1031_UnexpectedCharFollowingDirectiveName( iter, AStackString<>( "include" ), '"' );
+        Error::Error_1031_UnexpectedCharFollowingDirectiveName( iter, AStackString<>( BFF_KEYWORD_INCLUDE ), '"' );
         return false;
     }
 
@@ -1024,7 +1024,7 @@ bool BFFParser::ParseIfCondition( const BFFIterator & directiveStart, BFFIterato
     // #if operators (e.g. exists) and only parse them as operators if we find a brace.
     if ( *iter == BFF_FUNCTION_ARGS_OPEN )
     {
-        if ( variableOrOperator == "exists" )
+        if ( variableOrOperator == BFF_KEYWORD_EXISTS )
         {
             return ParseIfExistsCondition( iter, result );
         }
@@ -1128,15 +1128,15 @@ bool BFFParser::ParseToEndIf( BFFIterator & directiveIter, BFFIterator & iter, b
             }
             const BFFIterator directiveNameEnd( iter );
             AStackString<> directiveName( directiveNameStart.GetCurrent(), directiveNameEnd.GetCurrent() );
-            if ( directiveName == "endif" )
+            if ( directiveName == BFF_KEYWORD_ENDIF )
             {
                 --depth;
             }
-            else if ( directiveName == "if" )
+            else if ( directiveName == BFF_KEYWORD_IF )
             {
                 ++depth;
             }
-            else if ( ( depth == 1 ) && ( directiveName == "else" ) )
+            else if ( ( depth == 1 ) && ( directiveName == BFF_KEYWORD_ELSE ) )
             {
                 if ( allowElse == false )
                 {
@@ -1303,7 +1303,8 @@ bool BFFParser::StoreVariableString( const AString & name,
         else if ( var->IsArrayOfStrings() || dstIsEmpty )
         {
             // OK - can concat String to ArrayOfStrings or to empty array
-            Array< AString > finalValues( var->GetArrayOfStrings().GetSize() + 1, false );
+            StackArray<AString> finalValues;
+            finalValues.SetCapacity( var->GetArrayOfStrings().GetSize() + 1 );
             if ( *operatorIter == BFF_VARIABLE_CONCATENATION )
             {
                 if ( !dstIsEmpty )
@@ -1345,7 +1346,7 @@ bool BFFParser::StoreVariableString( const AString & name,
         else if ( var->IsArrayOfStrings() || dstIsEmpty )
         {
             // OK - store new string as the single element of array
-            Array< AString > values( 1, false );
+            StackArray<AString> values;
             values.Append( value );
             BFFStackFrame::SetVarArrayOfStrings( name, values, frame );
             return true;
@@ -1368,8 +1369,8 @@ bool BFFParser::StoreVariableArray( const AString & name,
                                     const BFFIterator & operatorIter,
                                     BFFStackFrame * frame )
 {
-    Array< AString > values( 32, true );
-    Array< const BFFVariable * > structValues( 32, true );
+    StackArray<AString> values;
+    StackArray<const BFFVariable *> structValues;
 
     // find existing
     const BFFVariable * var = BFFStackFrame::GetVar( name, frame );
@@ -1606,17 +1607,15 @@ bool BFFParser::StoreVariableArray( const AString & name,
         varType = var ? var->GetType() : BFFVariable::VAR_ARRAY_OF_STRINGS;
     }
 
-    // check if selected type correctly
-    ASSERT ( varType == BFFVariable::VAR_ARRAY_OF_STRINGS || varType == BFFVariable::VAR_ARRAY_OF_STRUCTS );
-
     // Register this variable
     if ( varType == BFFVariable::VAR_ARRAY_OF_STRUCTS )
     {
         // structs
         BFFStackFrame::SetVarArrayOfStructs( name, structValues, frame );
     }
-    else if ( varType == BFFVariable::VAR_ARRAY_OF_STRINGS )
+    else
     {
+        ASSERT( varType == BFFVariable::VAR_ARRAY_OF_STRINGS );
         // strings
         BFFStackFrame::SetVarArrayOfStrings( name, values, frame );
     }
@@ -1665,10 +1664,10 @@ bool BFFParser::StoreVariableStruct( const AString & name,
     }
 
     // get variables defined in the scope
-    const Array< const BFFVariable * > & structMembers = stackFrame.GetLocalVariables();
+    Array<BFFVariable *> & structMembers = stackFrame.GetLocalVariables();
 
     // Register this variable
-    BFFStackFrame::SetVarStruct( name, structMembers, frame ? frame : stackFrame.GetParent() );
+    BFFStackFrame::SetVarStruct( name, Move( structMembers ), frame ? frame : stackFrame.GetParent() );
 
     return true;
 }
@@ -1744,7 +1743,15 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
         // self-assignment?
         if ( varDst == varSrc )
         {
-            return true;
+            // It's only self-assignment if the dstVar is at the same scope.
+            const BFFVariable * var = (dstFrame ? dstFrame : BFFStackFrame::GetCurrent())->GetLocalVar( dstName );
+            if ( var )
+            {
+                return true;
+            }
+
+            // If at a parent scope, continue to lower logic which will create the
+            // shadow copy at the current scope.
         }
     }
 
@@ -1778,7 +1785,8 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
         if ( ( dstType == BFFVariable::VAR_ARRAY_OF_STRINGS || dstIsEmpty ) &&
              ( srcType == BFFVariable::VAR_STRING ) )
         {
-            Array< AString > values( varDst->GetArrayOfStrings().GetSize() + 1, false );
+            StackArray<AString> values;
+            values.SetCapacity( varDst->GetArrayOfStrings().GetSize() + 1 );
             if ( concat )
             {
                 if ( !dstIsEmpty )
@@ -1816,7 +1824,8 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
              !subtract )
         {
             uint32_t num = (uint32_t)( 1 + ( ( concat && !dstIsEmpty ) ? varDst->GetArrayOfStructs().GetSize() : 0 ) );
-            Array< const BFFVariable * > values( num, false );
+            StackArray<const BFFVariable *> values;
+            values.SetCapacity( num );
             if ( concat && !dstIsEmpty )
             {
                 values.Append( varDst->GetArrayOfStructs() );
@@ -1832,7 +1841,12 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
         {
             if ( concat )
             {
-                BFFStackFrame::SetVarArrayOfStrings( dstName, varDst->GetArrayOfStrings(), dstFrame );
+                // Avoid self-assignment by checking that the destination variable is not in destination scope.
+                const BFFVariable * var = ( dstFrame ? dstFrame : BFFStackFrame::GetCurrent() )->GetLocalVar( dstName );
+                if ( varDst != var )
+                {
+                    BFFStackFrame::SetVarArrayOfStrings( dstName, varDst->GetArrayOfStrings(), dstFrame );
+                }
             }
             else
             {
@@ -1846,7 +1860,12 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
         {
             if ( concat )
             {
-                BFFStackFrame::SetVarArrayOfStructs( dstName, varDst->GetArrayOfStructs(), dstFrame );
+                // Avoid self-assignment by checking that the destination variable is not in destination scope.
+                const BFFVariable * var = ( dstFrame ? dstFrame : BFFStackFrame::GetCurrent() )->GetLocalVar( dstName );
+                if ( varDst != var )
+                {
+                    BFFStackFrame::SetVarArrayOfStructs( dstName, varDst->GetArrayOfStructs(), dstFrame );
+                }
             }
             else
             {
@@ -1899,7 +1918,8 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
             if ( concat )
             {
                 const unsigned int num = (unsigned int)( varSrc->GetArrayOfStrings().GetSize() + varDst->GetArrayOfStrings().GetSize() );
-                Array< AString > values( num, false );
+                StackArray<AString> values;
+                values.SetCapacity( num );
                 values.Append( varDst->GetArrayOfStrings() );
                 values.Append( varSrc->GetArrayOfStrings() );
                 BFFStackFrame::SetVarArrayOfStrings( dstName, values, dstFrame );
@@ -1916,7 +1936,8 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
             if ( concat )
             {
                 const unsigned int num = (unsigned int)( varSrc->GetArrayOfStructs().GetSize() + varDst->GetArrayOfStructs().GetSize() );
-                Array< const BFFVariable * > values( num, false );
+                StackArray<const BFFVariable *> values;
+                values.SetCapacity( num );
                 values.Append( varDst->GetArrayOfStructs() );
                 values.Append( varSrc->GetArrayOfStructs() );
                 BFFStackFrame::SetVarArrayOfStructs( dstName, values, dstFrame );
@@ -2034,7 +2055,7 @@ bool BFFParser::StoreVariableToVariable( const AString & dstName, BFFIterator & 
                 }
                 if ( var->IsBool() == true )
                 {
-                    output += ( ( var->GetBool() ) ? "true" : "false" );
+                    output += ( ( var->GetBool() ) ? BFF_KEYWORD_TRUE : BFF_KEYWORD_FALSE );
                 }
                 else if ( var->IsInt() == true )
                 {

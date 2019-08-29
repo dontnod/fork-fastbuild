@@ -3,10 +3,9 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Core/PrecompiledHeader.h"
 #include "ReflectedProperty.h"
 #include "Core/Containers/Array.h"
-#include "Core/Math/CRC32.h"
+#include "Core/Math/xxHash.h"
 #include "Core/Reflection/PropertyType.h"
 #include "Core/Strings/AStackString.h"
 #include "Core/Strings/AString.h"
@@ -22,7 +21,7 @@
 //------------------------------------------------------------------------------
 ReflectedProperty::ReflectedProperty( const char * name, uint32_t offset, PropertyType type, bool isArray )
 {
-    m_NameCRC = CRC32::Calc( name, AString::StrLen( name ) );
+    m_NameCRC = xxHash::Calc32( name, AString::StrLen( name ) );
 
     ASSERT( offset < MAX_OFFSET );
     m_Offset = (uint16_t)offset;
@@ -168,13 +167,12 @@ size_t ReflectedPropertyStruct::GetArraySize( const void * object ) const
     ASSERT( GetType() == PT_STRUCT );
 
     // get the array
-    const size_t elementSize = GetPropertySize();
     const void * arrayBase = (const void *)( (size_t)object + m_Offset );
     const Array< char > * array = static_cast< const Array< char > * >( arrayBase );
 
-    // calculate the size
-    const size_t size = ( array->End() - array->Begin() ) / elementSize;
-    return size;
+    // NOTE: This assumes Array stores the size explicitly (and does not calculate it
+    //       based on the element size)
+    return array->GetSize();
 }
 
 //------------------------------------------------------------------------------

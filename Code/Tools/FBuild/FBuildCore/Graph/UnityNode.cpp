@@ -3,8 +3,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/PrecompiledHeader.h"
-
 #include "UnityNode.h"
 #include "DirectoryListNode.h"
 
@@ -31,6 +29,7 @@ REFLECT_NODE_BEGIN( UnityNode, Node, MetaNone() )
     REFLECT_ARRAY( m_InputPattern,      "UnityInputPattern",                    MetaOptional() )
     REFLECT_ARRAY( m_Files,             "UnityInputFiles",                      MetaOptional() + MetaFile() )
     REFLECT_ARRAY( m_FilesToExclude,    "UnityInputExcludedFiles",              MetaOptional() + MetaFile( true ) ) // relative
+    REFLECT_ARRAY( m_FilesToIsolate,    "UnityInputIsolatedFiles",              MetaOptional() + MetaFile( true ) ) // relative
     REFLECT_ARRAY( m_ExcludePatterns,   "UnityInputExcludePattern",             MetaOptional() + MetaFile( true ) ) // relative
     REFLECT_ARRAY( m_ObjectLists,       "UnityInputObjectLists",                MetaOptional() )
     REFLECT( m_OutputPath,              "UnityOutputPath",                      MetaPath() )
@@ -40,6 +39,7 @@ REFLECT_NODE_BEGIN( UnityNode, Node, MetaNone() )
     REFLECT( m_IsolateWritableFiles,    "UnityInputIsolateWritableFiles",       MetaOptional() )
     REFLECT( m_PrecompiledHeader,       "UnityPCH",                             MetaOptional() + MetaFile( true ) ) // relative
     REFLECT_ARRAY( m_PreBuildDependencyNames,   "PreBuildDependencies",         MetaOptional() + MetaFile() + MetaAllowNonFile() )
+    REFLECT( m_Hidden,                  "Hidden",                               MetaOptional() )
 REFLECT_END( UnityNode )
 
 // CONSTRUCTOR
@@ -137,6 +137,8 @@ UnityNode::~UnityNode()
     {
         return NODE_RESULT_FAILED; // GetFiles will have emitted an error
     }
+
+    FilterForceIsolated( files, m_IsolatedFiles );
 
     // TODO:A Sort files for consistent ordering across file systems/platforms
 
@@ -446,6 +448,85 @@ bool UnityNode::GetFiles( Array< FileAndOrigin > & files )
     }
 
     return ok;
+}
+
+// FilterForceIsolated
+//------------------------------------------------------------------------------
+void UnityNode::FilterForceIsolated( Array< FileAndOrigin > & files, Array< FileAndOrigin > & isolatedFiles )
+{
+    if ( m_FilesToIsolate.IsEmpty() )
+    {
+        return;
+    }
+
+    FileAndOrigin* writeIt = files.Begin();
+    const FileAndOrigin * readIt = writeIt;
+
+    for ( ; readIt != files.End(); ++readIt )
+    {
+        bool isolate = false;
+        for ( const AString & filename : m_FilesToIsolate )
+        {
+            if ( PathUtils::PathEndsWithFile( readIt->GetName(), filename ) )
+            {
+                isolate = true;
+                break;
+            }
+        }
+
+        if ( isolate )
+        {
+            isolatedFiles.Append( *readIt );
+        }
+        else if ( writeIt != readIt )
+        {
+            ASSERT( writeIt < readIt );
+            *writeIt = *readIt;
+            writeIt++;
+        }
+        else
+        {
+            writeIt++;
+        }
+    }
+
+    files.SetSize( (uint64_t)( writeIt - files.Begin() ) );
+}
+
+
+// EnumerateInputFiles
+//------------------------------------------------------------------------------
+void UnityNode::EnumerateInputFiles( void (*callback)( const AString & inputFile, const AString & baseDir, void * userData ), void * userData ) const
+{
+    for ( const Dependency & dep : m_StaticDependencies )
+    {
+        const Node * node = dep.GetNode();
+
+        if ( node->GetType() == Node::DIRECTORY_LIST_NODE )
+        {
+            const DirectoryListNode * dln = node->CastTo< DirectoryListNode >();
+
+            const Array< FileIO::FileInfo > & files = dln->GetFiles();
+            for ( const FileIO::FileInfo & fi : files )
+            {
+                callback( fi.m_Name, dln->GetPath(), userData );
+            }
+        }
+        else if ( node->GetType() == Node::OBJECT_LIST_NODE )
+        {
+            const ObjectListNode * oln = node->CastTo< ObjectListNode >();
+
+            oln->EnumerateInputFiles( callback, userData );
+        }
+        else if ( node->IsAFile() )
+        {
+            callback( node->GetName(), AString::GetEmpty(), userData );
+        }
+        else
+        {
+            ASSERT( false ); // unexpected node type
+        }
+    }
 }
 
 //------------------------------------------------------------------------------

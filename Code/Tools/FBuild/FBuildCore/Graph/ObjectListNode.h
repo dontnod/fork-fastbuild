@@ -39,6 +39,10 @@ public:
     CompilerNode * GetPreprocessor() const;
 
     inline const AString & GetCompilerOptions() const { return m_CompilerOptions; }
+    void GetObjectFileName( const AString & fileName, const AString & baseDir, AString & objFile );
+
+    void EnumerateInputFiles( void (*callback)( const AString & inputFile, const AString & baseDir, void * userData ), void * userData ) const;
+
 protected:
     friend class FunctionObjectList;
 
@@ -80,6 +84,7 @@ protected:
     Array< AString >    m_CompilerForceUsing;
     bool                m_CompilerInputAllowNoFiles         = false;
     bool                m_CompilerInputPathRecurse          = true;
+    bool                m_CompilerOutputKeepBaseExtension   = false;
     bool                m_DeoptimizeWritableFiles           = false;
     bool                m_DeoptimizeWritableFilesWithToken  = false;
     bool                m_AllowDistribution                 = true;

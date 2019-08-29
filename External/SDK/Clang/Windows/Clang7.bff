@@ -1,18 +1,16 @@
 // Clang 7.x.x
 //------------------------------------------------------------------------------
-.Clang7_BasePath = '../External/SDK/Clang/Windows/7.0.1'
+.Clang7_BasePath     = '../External/SDK/Clang/Windows/7.0.1'
+#if CI_BUILD
+    .Clang7_BasePath = 'C:\Program Files\LLVM'
+#endif
 
 // Compiler
 //------------------------------------------------------------------------------
 Compiler( 'Compiler-Clang7' )
 {
     .Root                           = '$Clang7_BasePath$'
-    .Executable                     = '$Root$\bin\clang-cl.exe'
-    //.ExtraFiles                     = {
-    //                                    '$Root$\bin\msvcp140.dll'
-    //                                    '$Root$\bin\vcruntime140.dll'
-    //                                  }
-    .ClangRewriteIncludes           = false // TODO:B Fix FASTBuild so it doesn't add this when using clang-cl.exe
+    .Executable                     = '$Root$\bin\clang++.exe'
 }
 
 // ToolChain
@@ -29,18 +27,22 @@ Compiler( 'Compiler-Clang7' )
 
     // Compiler Options
     .Compiler                       = 'Compiler-Clang7'
-    .CommonCompilerOptions          = ' -o"%2" "%1" -c'
-                                    + ' /Z7'
-                                    + ' -m64'           // x86_64
+    .CommonCompilerOptions          = ' -c -g'
 
                                     // Include paths
                                     + ' -I"./"'
                                     + .VSIncludePaths
 
+                                    // x64
+                                    + ' -m64'
+
                                     // Enable warnings
                                     + ' -Wall -Werror -Wfatal-errors'   // warnings as errors
                                     + ' -Wextra'
                                     + ' -Wshadow'
+
+                                    // No RTTI
+                                    + ' -fno-rtti'
 
                                     // MS compatibility
                                     + ' -fms-compatibility'
@@ -57,9 +59,6 @@ Compiler( 'Compiler-Clang7' )
                                     + ' -Wno-nonportable-include-path'  // non-portable path to file '"%s"'; specified path differs in case from file name on disk [-Wnonportable-include-path]
                                     + ' -Wno-ignored-pragma-intrinsic'  // _bittest' is not a recognized builtin; consider including <intrin.h> to access non-builtin intrinsics [-Wignored-pragma-intrinsic]
                                     + ' -Wno-int-to-void-pointer-cast'  // cast to 'void *' from smaller integer type 'unsigned long' [-Wint-to-void-pointer-cast]
-                                    #if USING_VS2013
-                                        + ' -Wno-implicit-exception-spec-mismatch'
-                                    #endif
 
                                     // as of v7.0.1, these warnings fire inside system headers
                                     + ' -Wno-reserved-id-macro'         // macro name is a reserved identifier [-Wreserved-id-macro]
@@ -78,6 +77,7 @@ Compiler( 'Compiler-Clang7' )
                                     + ' -Wno-constant-logical-operand'  // use of logical '&&' with constant operand [-Wconstant-logical-operand]
                                     + ' -Wno-sign-conversion'           // implicit conversion changes signedness : '%s' to '%s' [-Wsign-conversion]
                                     + ' -Wno-cast-align'                // cast from '%s' (aka '%s') to '%s' increases required alignment from 2 to 8 [-Wcast-align]
+                                    + ' -Wno-pragma-pack'               // the current #pragma pack aligment value is modified in the included file [-Wpragma-pack]
 
                                     // Disabled warnings that are not useful
                                     + ' -Wno-invalid-offsetof'          // we get the offset of members in non-POD types
@@ -92,15 +92,16 @@ Compiler( 'Compiler-Clang7' )
                                     + ' -Wno-deprecated'                // definition of implicit copy assignment operator for '%s' is deprecated because it has a user-declared destructor [-Wdeprecated]
                                     + ' -Wno-switch-enum'               // %u enumeration values not explicitly handled in switch: '%s', '%s', '%s'... [-Wswitch-enum]
 
-    .CompilerOptions                = .CommonCompilerOptions
-    .CompilerOptionsC               = .CommonCompilerOptions
+    .CompilerOptions                = ' -o"%2" "%1" $CommonCompilerOptions$'
+    .CompilerOptionsC               = ' -x c -o"%2" "%1" $CommonCompilerOptions$'
+    .PCHOptions                     = ' -x c++-header "%1" -o"%2" $CommonCompilerOptions$'
 
     // Librarian
     .Librarian                      = '$Clang7_BasePath$\bin\llvm-ar.exe'
     .LibrarianOptions               = 'rc "%2" "%1"' // NOTE: output must come first
 
     // Linker
-    //.Linker                       = From VS installation
+    .Linker                         = '$Clang7_BasePath$\bin\lld-link.exe'
     .LinkerOptions                  = '/NODEFAULTLIB /WX /NOLOGO /INCREMENTAL:NO /OUT:"%2" "%1" /DEBUG'
                                     + .VSLibPaths
 
@@ -109,7 +110,7 @@ Compiler( 'Compiler-Clang7' )
     .ExeExtension                   = '.exe'
 
     // Exception Control
-    .UseExceptions                  = ' /EHsc' //' -fexceptions'
+    .UseExceptions                  = ' -fexceptions'
 ]
 
 //------------------------------------------------------------------------------
