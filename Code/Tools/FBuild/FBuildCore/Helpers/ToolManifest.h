@@ -36,7 +36,7 @@ public:
         SYNCHRONIZED,
     };
 
-    bool                DoBuild();
+    bool                DoBuild( const AString & rootPath );
     void                StoreCompressedContent( const void * uncompressedData, const uint32_t uncompressedDataSize ) const;
     void                Migrate( const ToolManifestFile & oldFile );
 

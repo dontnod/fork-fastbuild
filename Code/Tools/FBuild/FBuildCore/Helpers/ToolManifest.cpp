@@ -110,7 +110,7 @@ void ToolManifestFile::StoreCompressedContent( const void * uncompressedData, co
 
 // DoBuild
 //------------------------------------------------------------------------------
-bool ToolManifestFile::DoBuild()
+bool ToolManifestFile::DoBuild( const AString & rootPath )
 {
     // Name should be set
     ASSERT( m_Name.IsEmpty() == false );
@@ -142,7 +142,7 @@ bool ToolManifestFile::DoBuild()
     m_UncompressedContentSize = uncompressedContentSize;
 
     // Store the hash and timestamp
-    m_Hash = FBuild::Hash32( m_BffRootPath, uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
+    m_Hash = FBuild::Hash32( rootPath, uncompressedContent, uncompressedContentSize ); // TODO:C Switch to 64 bit hash
     m_TimeStamp = FileIO::GetFileLastWriteTime( m_Name );
 
     // Compress and keep the data if it might be useful
@@ -194,7 +194,7 @@ bool ToolManifest::DoBuild( const Dependencies & dependencies )
     // Get timestamps and hashes
     for ( ToolManifestFile & file : m_Files )
     {
-        if ( !file.DoBuild() )
+        if ( !file.DoBuild( m_BffRootPath ) )
         {
             return false; // DoBuild will have emitted an rrror
         }
