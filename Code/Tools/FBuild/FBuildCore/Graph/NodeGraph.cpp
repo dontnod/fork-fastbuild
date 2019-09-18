@@ -17,6 +17,7 @@
 #include "CopyDirNode.h"
 #include "CopyFileNode.h"
 #include "CSNode.h"
+#include "DependencyListNode.h"
 #include "DirectoryListNode.h"
 #include "DLLNode.h"
 #include "ExeNode.h"
@@ -978,6 +979,18 @@ SettingsNode * NodeGraph::CreateSettingsNode( const AString & name )
     ASSERT( Thread::IsMainThread() );
 
     SettingsNode * node = FNEW( SettingsNode() );
+    node->SetName( name );
+    AddNode( node );
+    return node;
+}
+
+// CreateDependencyListNode
+//------------------------------------------------------------------------------
+DependencyListNode * NodeGraph::CreateDependencyListNode( const AString & name )
+{
+    ASSERT( Thread::IsMainThread() );
+
+    DependencyListNode * node = FNEW( DependencyListNode() );
     node->SetName( name );
     AddNode( node );
     return node;

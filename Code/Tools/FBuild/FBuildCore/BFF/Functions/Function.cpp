@@ -9,6 +9,7 @@
 #include "FunctionCopy.h"
 #include "FunctionCopyDir.h"
 #include "FunctionCSAssembly.h"
+#include "FunctionDependencyList.h"
 #include "FunctionDLL.h"
 #include "FunctionError.h"
 #include "FunctionExec.h"
@@ -58,7 +59,7 @@
 
 // Static
 //------------------------------------------------------------------------------
-/*static*/ Array<const Function *> g_Functions( 22, false );
+/*static*/ Array<const Function *> g_Functions( 23, false );
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
@@ -96,6 +97,7 @@ Function::~Function() = default;
     g_Functions.Append( FNEW( FunctionCopy ) );
     g_Functions.Append( FNEW( FunctionCopyDir ) );
     g_Functions.Append( FNEW( FunctionCSAssembly ) );
+    g_Functions.Append( FNEW( FunctionDependencyList ) );
     g_Functions.Append( FNEW( FunctionDLL ) );
     g_Functions.Append( FNEW( FunctionError ) );
     g_Functions.Append( FNEW( FunctionExec ) );

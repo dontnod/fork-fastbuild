@@ -74,6 +74,7 @@ public:
         REMOVE_DIR_NODE     = 18,
         XCODEPROJECT_NODE   = 19,
         SETTINGS_NODE       = 20,
+        DEPENDENCY_LIST_NODE= 21,
         // Make sure you update 's_NodeTypeNames' in the cpp
         NUM_NODE_TYPES      // leave this last
     };

@@ -14,6 +14,7 @@
 #include "Tools/FBuild/FBuildCore/Graph/CopyDirNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/CopyFileNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/CSNode.h"
+#include "Tools/FBuild/FBuildCore/Graph/DependencyListNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/DirectoryListNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/DLLNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/ExeNode.h"
@@ -79,6 +80,7 @@
     "RemoveDir",
     "XCodeProj",
     "Settings",
+    "DependencyList",
 };
 static Mutex g_NodeEnvStringMutex;
 
@@ -320,6 +322,7 @@ void Node::SetLastBuildTime( uint32_t ms )
     {
         case Node::PROXY_NODE:          ASSERT( false ); return nullptr;
         case Node::COPY_FILE_NODE:      return nodeGraph.CreateCopyFileNode( name );
+        case Node::DEPENDENCY_LIST_NODE:return nodeGraph.CreateDependencyListNode( name );
         case Node::DIRECTORY_LIST_NODE: return nodeGraph.CreateDirectoryListNode( name );
         case Node::EXEC_NODE:           return nodeGraph.CreateExecNode( name );
         case Node::FILE_NODE:           return nodeGraph.CreateFileNode( name );
