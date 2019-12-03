@@ -14,6 +14,7 @@
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/PathUtils.h"
 #include "Core/Math/xxHash.h"
+#include "Core/Mem/SystemMemory.h"
 #include "Core/Tracing/Tracing.h"
 
 // system
@@ -223,6 +224,28 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
                 continue;
             }
             PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
+            else if ( thisArg.BeginsWith( "-m" ) &&
+                      sscanf( thisArg.Get(), "-m%u", &m_MinPercentMemoryAvailable ) == 1 ) // TODO:C Consider using sscanf_s
+            PRAGMA_DISABLE_POP_MSVC // 4996
+            {
+                // only accept within sensible range
+                if ( m_MinPercentMemoryAvailable <= 100 )
+                {
+                    continue;
+                }
+            }
+            PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
+            else if ( thisArg.BeginsWith( "-w" ) &&
+                      sscanf( thisArg.Get(), "-w%u", &m_MemoryNeededPerWorker ) == 1 ) // TODO:C Consider using sscanf_s
+            PRAGMA_DISABLE_POP_MSVC // 4996
+            {
+                // only accept within sensible range
+                if ( m_MemoryNeededPerWorker <= 8000 )
+                {
+                    continue;
+                }
+            }
+            PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
             else if ( thisArg.BeginsWith( "-j" ) &&
                       sscanf( thisArg.Get(), "-j%u", &m_NumWorkerThreads ) == 1 ) // TODO:C Consider using sscanf_s
             PRAGMA_DISABLE_POP_MSVC // 4996
@@ -420,6 +443,52 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
         }
     }
 
+    // Clamp number of workers according to total system memory
+    if ( m_MinPercentMemoryAvailable )
+    {
+        size_t systemFree, systemTotal;
+        GetSystemMemorySize( &systemFree, &systemTotal );
+
+        if ( systemTotal > 0 )
+        {
+            int64_t systemUsable = int64_t( systemFree );
+            systemUsable -= ( ( systemTotal * m_MinPercentMemoryAvailable ) / 100 ); // user reserve
+
+            if ( systemUsable < 0 )
+            {
+                systemUsable = 0;
+            }
+
+            const int64_t estimatedMemoryPerWorker = int64_t(m_MemoryNeededPerWorker) << 20; // megabytes to bytes
+            if ( estimatedMemoryPerWorker > 0 )
+            {
+                const uint32_t numWorkersUsable = uint32_t( systemUsable / estimatedMemoryPerWorker );
+
+                if ( m_NumWorkerThreads > numWorkersUsable )
+                {
+                    if ( m_WrapperMode == FBuildOptions::WRAPPER_MODE_MAIN_PROCESS )
+                    {
+                        OUTPUT(
+                            "Use %u worker threads instead of %u to limit memory usage:\n"
+                            " - System memory available %u / %u mb,\n"
+                            " - Should leave at least %u%% of RAM available,\n"
+                            " - Around %u mb needed per worker thread,\n"
+                            "   -> But worker threads can only use %u mb for local jobs.\n",
+                            uint32_t(numWorkersUsable),
+                            uint32_t(m_NumWorkerThreads),
+                            uint32_t(systemFree >> 20),
+                            uint32_t(systemTotal >> 20),
+                            uint32_t(m_MinPercentMemoryAvailable),
+                            uint32_t(estimatedMemoryPerWorker >> 20),
+                            uint32_t(systemUsable >> 20) );
+                    }
+
+                    m_NumWorkerThreads = numWorkersUsable;
+                }
+            }
+        }
+    }
+
     // Global mutex names depend on workingDir which is managed by FBuildOptions
     m_ProgramName = programName;
 
@@ -546,6 +615,10 @@ void FBuildOptions::DisplayHelp( const AString & programName ) const
             " -ide              Enable multiple options when building from an IDE.\n"
             "                   Enables: -noprogress, -fixuperrorpaths &\n"
             "                   -wrapper (Windows)\n"
+            " -m[x]             Explicitly set minimum percentage of memory available to X,\n"
+            "                   instead of default 10%% threshold.\n"
+            " -w[x]             Explicitly set needed memory per worker to X megabytes,\n"
+            "                   instead of default 500Mb.\n"
             " -j<x>             Explicitly set LOCAL worker thread count X, instead of\n"
             "                   default of hardware thread count.\n"
             " -monitor          Emit a machine-readable file while building.\n"

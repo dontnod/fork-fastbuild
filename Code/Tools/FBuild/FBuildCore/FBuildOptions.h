@@ -94,6 +94,8 @@ public:
     bool        m_ForceDBMigration_Debug            = false; // Force migration even if bff has not changed (for tests)
     bool        m_ContinueAfterDBMove               = false;
 
+    uint32_t    m_MinPercentMemoryAvailable         = 10; // 10% of memory available minimum
+    uint32_t    m_MemoryNeededPerWorker             = 500; // 500mb minimum per worker
     uint32_t    m_NumWorkerThreads                  = 0; // True default detected in constructor
     AString     m_ConfigFile;
 
