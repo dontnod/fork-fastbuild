@@ -16,6 +16,7 @@
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
 #include "Core/FileIO/PathUtils.h"
+#include "Core/Mem/SystemMemory.h"
 #include "Core/Process/Atomic.h"
 #include "Core/Process/Thread.h"
 #include "Core/Profile/Profile.h"
@@ -163,6 +164,12 @@ void WorkerThread::WaitForStop()
 //------------------------------------------------------------------------------
 /*static*/ bool WorkerThread::Update()
 {
+    // test system memory status
+    if ( IsSystemMemoryStressed() )
+    {
+        return false; // cooldown memory usage
+    }
+
     // try to find some work to do
     Job * job = JobQueue::IsValid() ? JobQueue::Get().GetJobToProcess() : nullptr;
     if ( job != nullptr )
@@ -285,6 +292,49 @@ void WorkerThread::WaitForStop()
     const char * lastSlash = tmpFileName.FindLast( NATIVE_SLASH );
     tmpFileName.SetLength( (uint32_t)( lastSlash - tmpFileName.Get() ) );
     FileIO::EnsurePathExists( tmpFileName );
+}
+
+// Returns true if using more than 90% percent of system memory.
+//------------------------------------------------------------------------------
+/*static*/ bool WorkerThread::IsSystemMemoryStressed()
+{
+    static const int64_t timeout = 5/* seconds */ * Timer::GetFrequency();
+    static int64_t s_StressExpiration = -1;
+
+    const uint32_t minAvailable = FBuild::Get().GetOptions().m_MinPercentMemoryAvailable;
+    const int64_t now = Timer::GetNow();
+
+    if ( s_StressExpiration > now )
+    {
+        return true; // cooldown
+    }
+    else
+    {
+        size_t free, total;
+        GetSystemMemorySize( &free, &total );
+
+        if ( total > 0 )
+        {
+            if ( ( free * 100 ) < ( total * minAvailable ) )
+            {
+                MutexHolder lock( WorkerThread::s_TmpRootMutex );
+
+                if ( s_StressExpiration < now )
+                {
+                    s_StressExpiration = ( Timer::GetNow() + timeout );
+
+                    FLOG_WARN( "-Cooldown memory usage: available %u / %u mb (%.2f%% used)",
+                        uint32_t( free >> 20 ),
+                        uint32_t( total >> 20 ),
+                        ( total - free ) * 100.0f / total );
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 //------------------------------------------------------------------------------
