@@ -8,6 +8,7 @@
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
+#include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
 
 // Core
 #include "Core/FileIO/FileIO.h"
@@ -133,7 +134,7 @@ DirectoryListNode::~DirectoryListNode() = default;
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult DirectoryListNode::DoBuild( Job * UNUSED( job ) )
+/*virtual*/ Node::BuildResult DirectoryListNode::DoBuild( Job * job )
 {
     // NOTE: The DirectoryListNode makes no assumptions about whether no files
     // is an error or not.  That's up to the dependent nodes to decide.
@@ -220,12 +221,17 @@ DirectoryListNode::~DirectoryListNode() = default;
     }
     else
     {
+        // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+        const AString& rootPath = ( job->IsLocal()
+            ? FBuild::Get().GetRootPath()
+            : job->GetToolManifest()->GetRemoteBffRootPath() );
+
         MemoryStream ms;
         for ( const FileIO::FileInfo & file : m_Files )
         {
             ms.WriteBuffer( file.m_Name.Get(), file.m_Name.GetLength() );
         }
-        m_Stamp = xxHash::Calc64( ms.GetData(), ms.GetSize() );
+        m_Stamp = FBuild::Hash64( rootPath, ms.GetData(), ms.GetSize() );
     }
 
     return NODE_RESULT_OK;

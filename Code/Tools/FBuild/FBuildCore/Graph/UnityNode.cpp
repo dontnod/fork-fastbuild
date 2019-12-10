@@ -12,6 +12,7 @@
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectListNode.h"
+#include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
 
 // Core
 #include "Core/FileIO/FileIO.h"
@@ -115,7 +116,7 @@ UnityNode::~UnityNode()
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult UnityNode::DoBuild( Job * UNUSED( job ) )
+/*virtual*/ Node::BuildResult UnityNode::DoBuild( Job * job )
 {
     bool hasOutputMessage = false; // print msg first time we actually save a file
 
@@ -283,7 +284,12 @@ UnityNode::~UnityNode()
             m_UnityFileNames.Append( unityName );
         }
 
-        stamps.Append( xxHash::Calc64( output.Get(), output.GetLength() ) );
+        // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+        const AString& rootPath = ( job->IsLocal()
+            ? FBuild::Get().GetRootPath()
+            : job->GetToolManifest()->GetRemoteBffRootPath() );
+
+        stamps.Append( FBuild::Hash64( rootPath, output.Get(), output.GetLength() ) );
 
         // need to write the unity file?
         bool needToWrite = false;
