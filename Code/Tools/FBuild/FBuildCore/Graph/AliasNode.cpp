@@ -54,6 +54,8 @@ AliasNode::~AliasNode() = default;
 //------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult AliasNode::DoBuild( Job * UNUSED( job ) )
 {
+	Array< uint64_t > stamps(m_StaticDependencies.GetSize(), false);
+
     const Dependencies::Iter end = m_StaticDependencies.End();
     for ( Dependencies::Iter it = m_StaticDependencies.Begin();
           it != end;
@@ -71,7 +73,25 @@ AliasNode::~AliasNode() = default;
                 return Node::NODE_RESULT_FAILED;
             }
         }
+		else if ( n->GetStamp() == 0 )
+		{
+			// ... the build should fail
+			FLOG_ERROR("Alias: %s\nFailed due to missing dependency: %s\n", GetName().Get(), n->GetName().Get());
+			return Node::NODE_RESULT_FAILED;
+		}
+
+		stamps.Append( n->GetStamp() );
     }
+
+	if ( m_StaticDependencies.IsEmpty() )
+	{
+		m_Stamp = 1; // Non-zero
+	}
+	else
+	{
+		m_Stamp = xxHash::Calc64(&stamps[0], (stamps.GetSize() * sizeof(uint64_t)));
+	}
+
     return NODE_RESULT_OK;
 }
 
