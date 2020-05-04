@@ -21,6 +21,7 @@ class CopyDirNode;
 class CopyFileNode;
 class CSNode;
 class Dependencies;
+class DependencyListNode;
 class DirectoryListNode;
 class DLLNode;
 class ExeNode;
@@ -58,7 +59,7 @@ public:
     }
     inline ~NodeGraphHeader() = default;
 
-    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 148 };
+    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 148+1/* PQU: increments graph version for path agnostic hash support (see FBuild.cpp) */ };
 
     bool IsValid() const
     {
@@ -128,6 +129,7 @@ public:
     XCodeProjectNode * CreateXCodeProjectNode( const AString & name );
     SettingsNode * CreateSettingsNode( const AString & name );
     TextFileNode * CreateTextFileNode( const AString & name );
+    DependencyListNode* CreateDependencyListNode( const AString& name );
 
     void DoBuildPass( Node * nodeToBuild );
 
