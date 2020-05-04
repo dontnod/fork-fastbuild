@@ -18,7 +18,7 @@ class DependencyListNode : public FileNode
     REFLECT_NODE_DECLARE( DependencyListNode )
 public:
     explicit DependencyListNode();
-    virtual bool Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function ) override;
+    virtual bool Initialize( NodeGraph & nodeGraph, const BFFToken* iter, const Function * function ) override;
     virtual ~DependencyListNode() override;
 
     static inline Node::Type GetTypeS() { return Node::COPY_FILE_NODE; }

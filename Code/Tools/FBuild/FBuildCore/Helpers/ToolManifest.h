@@ -116,6 +116,11 @@ public:
     const AString&  GetRemoteBffRootPath() const { return m_BffRootPath; }
 
     static void     GetRelativePath( const AString & root, const AString & otherFile, AString & otherFileRelativePath );
+    
+    #if defined( __OSX__ ) || defined( __LINUX__ )
+        void            TouchFiles() const;
+    #endif
+
 private:
     mutable Mutex   m_Mutex;
 

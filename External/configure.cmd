@@ -16,6 +16,7 @@ mklink /j "%EXTERNAL_SDK%\VisualStudio\2010" "%VS110%"
 mklink /j "%EXTERNAL_SDK%\VisualStudio\2013" "%VS110%"
 mklink /j "%EXTERNAL_SDK%\VisualStudio\2015" "%VS134%"
 mklink /j "%EXTERNAL_SDK%\VisualStudio\2017" "C:\Program Files (x86)\Microsoft Visual Studio\2017"
+mklink /j "%EXTERNAL_SDK%\VisualStudio\2019" "C:\Program Files (x86)\Microsoft Visual Studio\2019"
 
 REM ***** Windows SDK
 mklink /j "%EXTERNAL_SDK%\Windows\8.0" "%WINDOWS_SDK%\8.0"

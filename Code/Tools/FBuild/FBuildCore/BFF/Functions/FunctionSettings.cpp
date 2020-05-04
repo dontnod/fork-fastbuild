@@ -27,7 +27,7 @@ FunctionSettings::FunctionSettings()
 
 // Commit
 //------------------------------------------------------------------------------
-/*virtual*/ bool FunctionSettings::Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const
+/*virtual*/ bool FunctionSettings::Commit( NodeGraph & nodeGraph, const BFFToken * funcStartIter ) const
 {
     AStackString<> name( "$$Settings$$" );
     if ( nodeGraph.FindNode( name ) )
@@ -51,7 +51,7 @@ FunctionSettings::FunctionSettings()
     FBuild::Get().SetRootPath( rootPath );
     if ( !rootPath.IsEmpty() )
     {
-        FLOG_INFO( "RootPath: '%s'", rootPath.Get() );
+        FLOG_OUTPUT( "RootPath: '%s'", rootPath.Get() );
     }
 
 

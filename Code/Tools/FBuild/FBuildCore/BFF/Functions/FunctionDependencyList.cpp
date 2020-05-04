@@ -31,7 +31,7 @@ FunctionDependencyList::FunctionDependencyList()
 
 // Commit
 //------------------------------------------------------------------------------
-/*virtual*/ bool FunctionDependencyList::Commit( NodeGraph & nodeGraph, const BFFIterator & funcStartIter ) const
+/*virtual*/ bool FunctionDependencyList::Commit( NodeGraph & nodeGraph, const BFFToken* funcStartIter) const
 {
     // make sure all required variables are defined
     const BFFVariable * sourceV;

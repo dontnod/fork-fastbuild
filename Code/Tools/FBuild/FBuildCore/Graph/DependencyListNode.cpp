@@ -30,6 +30,10 @@ REFLECT_END( DependencyListNode )
 // Anonymous DependencyListBuilder struct
 //------------------------------------------------------------------------------
 struct DependencyListBuilder {
+    DependencyListBuilder& operator=(DependencyListBuilder&&) = delete; //avoid warning C5027 (move assignment operator was implicitly defined as deleted)
+    DependencyListBuilder& operator=(DependencyListBuilder&) = delete; //avoid warning 4626 (assignment operator was implicitly defined as deleted)
+    DependencyListBuilder(DependencyListBuilder&) = delete; // avoid warning C4625 (copy constructor was implicitly defined as deleted)
+
     enum {
         iBuckets = 256,
         mBuckets = (iBuckets - 1)
@@ -51,7 +55,7 @@ struct DependencyListBuilder {
 
         bucket_t & bucket = Visiteds[ node->GetNameCRC() & mBuckets ];
 
-        if ( bucket.Find( node ) == false )
+        if ( bucket.Find( node ) == nullptr )
         {
             bucket.Append( node );
             return true;
@@ -175,7 +179,7 @@ DependencyListNode::DependencyListNode()
 
 // Initialize
 //------------------------------------------------------------------------------
-/*virtual*/ bool DependencyListNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
+/*virtual*/ bool DependencyListNode::Initialize( NodeGraph & nodeGraph, const BFFToken* iter, const Function * function )
 {
     // .PreBuildDependencies
     if ( !InitializePreBuildDependencies( nodeGraph, iter, function, m_PreBuildDependencyNames ) )
@@ -222,9 +226,9 @@ DependencyListNode::~DependencyListNode() = default;
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult DependencyListNode::DoBuild( Job * UNUSED( job ) )
+/*virtual*/ Node::BuildResult DependencyListNode::DoBuild( Job * /*job*/ )
 {
-    FLOG_INFO( "DependencyList: '%s' -> '%s'", m_Source.Get(), GetName().Get() );
+    FLOG_OUTPUT("DependencyList: '%s' -> '%s'", m_Source.Get(), GetName().Get());
 
     // create the dependency list file
     if ( DependencyListBuilder::MakeListTxt( this, m_Name.Get(), m_Patterns ) == false )

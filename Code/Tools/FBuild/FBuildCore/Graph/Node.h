@@ -15,7 +15,7 @@
 
 // Forward Declarations
 //------------------------------------------------------------------------------
-class BFFIterator;
+class BFFToken;
 class CompilerNode;
 class FileNode;
 class Function;
@@ -39,6 +39,9 @@ class NodeGraph;
 
 #define REFLECT_NODE_BEGIN( nodeName, baseNodeName, metaData )          \
     REFLECT_STRUCT_BEGIN( nodeName, baseNodeName, metaData )
+
+#define REFLECT_NODE_BEGIN_ABSTRACT( nodeName, baseNodeName, metaData ) \
+    REFLECT_STRUCT_BEGIN_ABSTRACT( nodeName, baseNodeName, metaData )
 
 // FBuild
 //------------------------------------------------------------------------------
@@ -74,7 +77,9 @@ public:
         REMOVE_DIR_NODE     = 18,
         XCODEPROJECT_NODE   = 19,
         SETTINGS_NODE       = 20,
-        DEPENDENCY_LIST_NODE= 21,
+        VSPROJEXTERNAL_NODE = 21,
+        TEXT_FILE_NODE      = 22,
+        DEPENDENCY_LIST_NODE= 23,
         // Make sure you update 's_NodeTypeNames' in the cpp
         NUM_NODE_TYPES      // leave this last
     };
@@ -82,8 +87,7 @@ public:
     enum ControlFlag
     {
         FLAG_NONE                   = 0x00,
-        FLAG_TRIVIAL_BUILD          = 0x01, // DoBuild is performed locally in main thread
-        FLAG_ALWAYS_BUILD           = 0x02, // DoBuild is always performed (for e.g. directory listings)
+        FLAG_ALWAYS_BUILD           = 0x01, // DoBuild is always performed (for e.g. directory listings)
     };
 
     enum StatsFlag
@@ -96,6 +100,7 @@ public:
         STATS_LIGHT_CACHE   = 0x20, // used the LightCache
         STATS_BUILT_REMOTE  = 0x40, // node was built remotely
         STATS_FAILED        = 0x80, // node needed building, but failed
+        STATS_FIRST_BUILD   = 0x100,// node has never been built before
         STATS_REPORT_PROCESSED  = 0x4000, // seen during report processing
         STATS_STATS_PROCESSED   = 0x8000 // mark during stats gathering (leave this last)
     };
@@ -120,7 +125,7 @@ public:
     };
 
     explicit Node( const AString & name, Type type, uint32_t controlFlags );
-    virtual bool Initialize( NodeGraph & nodeGraph, const BFFIterator & funcStartIter, const Function * function ) = 0;
+    virtual bool Initialize( NodeGraph & nodeGraph, const BFFToken * funcStartIter, const Function * function ) = 0;
     virtual ~Node();
 
     inline uint32_t        GetNameCRC() const { return m_NameCRC; }
@@ -236,7 +241,7 @@ protected:
     virtual void Migrate( const Node & oldNode );
 
     bool            InitializePreBuildDependencies( NodeGraph & nodeGraph,
-                                                    const BFFIterator & iter,
+                                                    const BFFToken * iter,
                                                     const Function * function,
                                                     const Array< AString > & preBuildDependencyNames );
 

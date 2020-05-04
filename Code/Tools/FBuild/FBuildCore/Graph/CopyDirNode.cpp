@@ -8,7 +8,6 @@
 #include "Tools/FBuild/FBuildCore/BFF/Functions/Function.h"
 #include "Tools/FBuild/FBuildCore/FBuild.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
-#include "Tools/FBuild/FBuildCore/BFF/BFFIterator.h"
 #include "Tools/FBuild/FBuildCore/Graph/CopyFileNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/DirectoryListNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
@@ -36,7 +35,7 @@ CopyDirNode::CopyDirNode()
 
 // Initialize
 //------------------------------------------------------------------------------
-/*virtual*/ bool CopyDirNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
+/*virtual*/ bool CopyDirNode::Initialize( NodeGraph & nodeGraph, const BFFToken * iter, const Function * function )
 {
     // .PreBuildDependencies
     if ( !InitializePreBuildDependencies( nodeGraph, iter, function, m_PreBuildDependencyNames ) )
@@ -54,6 +53,7 @@ CopyDirNode::CopyDirNode()
                                               Array< AString >(),     // Unsupported: Excluded files
                                               Array< AString >(),    // Unsupported: Excluded patterns
                                               m_SourcePathsRecurse,
+                                              false, // Don't include read-only status in hash
                                               &m_SourcePathsPattern,
                                               "SourcePaths",
                                               sourcePaths ) )
@@ -141,8 +141,8 @@ CopyDirNode::~CopyDirNode() = default;
                 CopyFileNode * copyFileNode = nodeGraph.CreateCopyFileNode( dstFile );
                 copyFileNode->m_Source = srcFileNode->GetName();
                 copyFileNode->m_PreBuildDependencyNames = preBuildDependencyNames; // inherit PreBuildDependencies
-                BFFIterator iter;
-                if ( !copyFileNode->Initialize( nodeGraph, iter, nullptr ) )
+                BFFToken * token = nullptr;
+                if ( !copyFileNode->Initialize( nodeGraph, token, nullptr ) )
                 {
                     return false; // Initialize will have emitted an error
                 }
@@ -169,7 +169,7 @@ CopyDirNode::~CopyDirNode() = default;
                 }
             }
 
-            m_DynamicDependencies.Append( Dependency( n ) );
+            m_DynamicDependencies.EmplaceBack( n );
         }
     }
     return true;
