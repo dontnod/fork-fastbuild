@@ -9,6 +9,7 @@
 #include "Tools/FBuild/FBuildCore/FLog.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 #include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
+#include "Tools/FBuild/FBuildCore/Helpers/ToolManifest.h"
 
 // Core
 #include "Core/FileIO/FileIO.h"
