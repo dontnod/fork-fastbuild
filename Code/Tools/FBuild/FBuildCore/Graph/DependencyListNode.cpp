@@ -228,7 +228,7 @@ DependencyListNode::~DependencyListNode() = default;
 //------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult DependencyListNode::DoBuild( Job * /*job*/ )
 {
-    FLOG_OUTPUT("DependencyList: '%s' -> '%s'", m_Source.Get(), GetName().Get());
+    FLOG_VERBOSE("DependencyList: '%s' -> '%s'", m_Source.Get(), GetName().Get());
 
     // create the dependency list file
     if ( DependencyListBuilder::MakeListTxt( this, m_Name.Get(), m_Patterns ) == false )
