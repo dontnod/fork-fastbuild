@@ -32,6 +32,7 @@ public:
     uint32_t                            GetWorkerConnectionLimit() const { return m_WorkerConnectionLimit; }
     uint32_t                            GetDistributableJobMemoryLimitMiB() const { return m_DistributableJobMemoryLimitMiB; }
     bool                                GetDisableDBMigration() const { return m_DisableDBMigration; }
+    const AString &                     GetRootPath() const;
 
 private:
     void ProcessEnvironment( const Array< AString > & envStrings ) const;
@@ -50,6 +51,7 @@ private:
     uint32_t            m_WorkerConnectionLimit;
     uint32_t            m_DistributableJobMemoryLimitMiB;
     bool                m_DisableDBMigration; // TODO:C Remove this option some time after v0.99
+    AString             m_RootPath;
 };
 
 //------------------------------------------------------------------------------

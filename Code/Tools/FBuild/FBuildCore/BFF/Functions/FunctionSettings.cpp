@@ -42,18 +42,6 @@ FunctionSettings::FunctionSettings()
     {
         return false;
     }
-    // "RootPath"
-    AStackString<> rootPath;
-    if ( !GetString( funcStartIter, rootPath, ".RootPath" ) )
-    {
-        return false;
-    }
-    FBuild::Get().SetRootPath( rootPath );
-    if ( !rootPath.IsEmpty() )
-    {
-        FLOG_OUTPUT( "RootPath: '%s'", rootPath.Get() );
-    }
-
 
     return settingsNode->Initialize( nodeGraph, funcStartIter, this );
 }

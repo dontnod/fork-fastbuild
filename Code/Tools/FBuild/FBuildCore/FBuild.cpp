@@ -172,6 +172,7 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
     }
 
     const SettingsNode * settings = m_DependencyGraph->GetSettings();
+    ASSERT(settings != nullptr);
 
     // if the cache is enabled, make sure the path is set and accessible
     if ( m_Options.m_UseCacheRead || m_Options.m_UseCacheWrite || m_Options.m_CacheInfo || m_Options.m_CacheTrim )
@@ -192,6 +193,17 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
             FDELETE m_Cache;
             m_Cache = nullptr;
         }
+    }
+
+    const AString& rootPath = settings->GetRootPath();
+    if (!rootPath.IsEmpty())
+    {
+        FLOG_OUTPUT("RootPath: '%s'", rootPath.Get());
+        SetRootPath(rootPath);
+    }
+    else if(m_Cache != nullptr)
+    {
+        FLOG_WARN("RootPath: undefined");
     }
 
     return true;
