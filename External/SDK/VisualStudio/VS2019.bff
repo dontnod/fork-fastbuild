@@ -37,7 +37,7 @@
             Print( '-----------------------------------------------------------------------' )
             Print( '- Unable to auto-detect VS2019 - please specify installation manually -' )
             Print( '-----------------------------------------------------------------------' )
-            .VS2019_BasePath        = .Set_Path_Here    // <-- Set path here
+            .VS2019_BasePath        = "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC"    // <-- Set path here
             .VS2019_Version         = .Set_Version_Here // <-- Set version here
         #endif
     #endif
@@ -96,6 +96,7 @@ Compiler( 'Compiler-VS2019-x64' )
                                     // Warnings
                                     + ' /Wall'              // Enable all warnings (we'll disable those that are not useful)
                                     + ' /WX'                // Warnings as errors
+                                    + ' /Wv:18'             // dodge warnings about inplace new operators not matching WinSDK ones (not our problem)
 
                                     // These warnings are useful, but fire in system headers (Windows SDK or MSVC CRT)
                                     + ' /wd4668' // '%s' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
