@@ -72,7 +72,7 @@ public:
                                     bool usingPCH );
     static bool IsCompilerArg_MSVC( const AString & token, const char * arg );
     static bool IsStartOfCompilerArg_MSVC( const AString & token, const char * arg );
-    static const char* IsStartingWithIncludeCompilerArg_MSVC( const AString& token );
+    static const char* IsStartingWithIncludeCompilerArg_MSVC( const AString& token , bool * isExternalInclude = nullptr );
 
     inline bool IsCreatingPCH() const { return GetFlag( FLAG_CREATING_PCH ); }
     inline bool IsUsingPCH() const { return GetFlag( FLAG_USING_PCH ); }
