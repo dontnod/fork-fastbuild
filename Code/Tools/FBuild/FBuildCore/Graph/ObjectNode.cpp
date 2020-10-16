@@ -1081,12 +1081,13 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
 
 // IsStartingWithIncludeCompilerArg_MSVC
 //------------------------------------------------------------------------------
-/*static*/ const char* ObjectNode::IsStartingWithIncludeCompilerArg_MSVC( const AString& token )
+/*static*/ const char* ObjectNode::IsStartingWithIncludeCompilerArg_MSVC( const AString& token , bool* isExternalInclude )
 {
     const char * StartingIncludeArg = nullptr;
 
-    const int msvcIncludeArgCount = 1;
-    const char * msvcIncludeArgs[ msvcIncludeArgCount ] = { "I" };
+    const int msvcIncludeArgCount = 3;
+    const char * msvcIncludeArgs[ msvcIncludeArgCount ] = { "I" , "imsvc" , "external:I" };
+    const bool msvcIncludeArgsWithExternalMode[ msvcIncludeArgCount ] = { false , true , true };
 
     for ( int compilerArgIndex = 0; compilerArgIndex < msvcIncludeArgCount; ++compilerArgIndex )
     {
@@ -1095,6 +1096,11 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
         {
             ASSERT( StartingIncludeArg == nullptr );
             StartingIncludeArg = msvcIncludeArg;
+
+            if ( isExternalInclude != nullptr )
+            {
+                *isExternalInclude = msvcIncludeArgsWithExternalMode[ compilerArgIndex ];
+            }
 
             break;
         }
