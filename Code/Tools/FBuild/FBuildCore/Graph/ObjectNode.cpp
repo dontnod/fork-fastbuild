@@ -1079,6 +1079,30 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
     return ( AString::StrNCmp( token.Get() + 1, arg, argLen ) == 0 );
 }
 
+// IsStartingWithIncludeCompilerArg_MSVC
+//------------------------------------------------------------------------------
+/*static*/ const char* ObjectNode::IsStartingWithIncludeCompilerArg_MSVC( const AString& token )
+{
+    const char * StartingIncludeArg = nullptr;
+
+    const int msvcIncludeArgCount = 1;
+    const char * msvcIncludeArgs[ msvcIncludeArgCount ] = { "I" };
+
+    for ( int compilerArgIndex = 0; compilerArgIndex < msvcIncludeArgCount; ++compilerArgIndex )
+    {
+        const char * msvcIncludeArg = msvcIncludeArgs[ compilerArgIndex ];
+        if ( IsStartOfCompilerArg_MSVC( token, msvcIncludeArg ) )
+        {
+            ASSERT( StartingIncludeArg == nullptr );
+            StartingIncludeArg = msvcIncludeArg;
+
+            break;
+        }
+    }
+
+    return StartingIncludeArg;
+}
+
 // SaveRemote
 //------------------------------------------------------------------------------
 /*virtual*/ void ObjectNode::SaveRemote( IOStream & stream ) const
@@ -1769,39 +1793,59 @@ bool ObjectNode::BuildArgs( const Job * job, Args & fullArgs, Pass pass, bool us
                 // we expand relative includes as they would be on the host (so the remote machine's
                 // working dir is not used, which might be longer, causing this overflow an internal
                 // limit of cl.exe)
-                if ( ( job->IsLocal() == false ) && IsStartOfCompilerArg_MSVC( token, "I" ) )
+                if ( job->IsLocal() == false )
                 {
-                    // Get include path part
-                    const char * start = token.Get() + 2; // Skip /I or -I
-                    const char * end = token.GetEnd();
-
-                    // strip quotes if present
-                    if ( *start == '"' )
+                    const char * matchingCompilerArg = IsStartingWithIncludeCompilerArg_MSVC( token );
+                    if ( matchingCompilerArg != nullptr )
                     {
-                        ++start;
-                    }
-                    if ( end[ -1 ] == '"' )
-                    {
-                        --end;
-                    }
-                    AStackString<> includePath( start, end );
-                    const bool isFullPath = PathUtils::IsFullPath( includePath );
+                        const size_t matchingCompilerArgLength = AString::StrLen( matchingCompilerArg );
 
-                    // Replace relative paths and leave full paths alone
-                    if ( isFullPath == false )
-                    {
-                        // Remove relative include
-                        StripTokenWithArg_MSVC( "I", token, i );
+                        // Get include path part
+                        const char* tokenStart = token.Get();
+                        const char* tokenEnd = token.GetEnd();
 
-                        // Add full path include
-                        fullArgs.Append( token.Get(), (size_t)( start - token.Get() ) );
-                        fullArgs += job->GetRemoteSourceRoot();
-                        fullArgs += '\\';
-                        fullArgs += includePath;
-                        fullArgs.Append( end, (size_t)( token.GetEnd() - end ) );
-                        fullArgs.AddDelimiter();
+                        const char * includeStart = tokenStart + matchingCompilerArgLength + 1; // Skip first character ('/' or '-') in addition to compiler argument
+                        const char * includeEnd = tokenEnd;
 
-                        continue; // Include path has been replaced
+                        if ( includeStart == includeEnd )
+                        {
+                            const AString& NextToken = tokens[ i + 1 ];
+                            WARNING( "Attempting to replace include relative paths in compiler argument '%s': include path is empty, trying to use next token %s instead.\n", tokenStart, NextToken.Get() );
+                            tokenStart = NextToken.Get();
+                            tokenEnd = NextToken.GetEnd();
+                            includeStart = tokenStart;
+                            includeEnd = tokenEnd;
+                        }
+
+                        // strip quotes if present
+                        if ( *includeStart == '"' )
+                        {
+                            ++includeStart;
+                        }
+                        if ( includeEnd[ -1 ] == '"' )
+                        {
+                            --includeEnd;
+                        }
+                        AStackString<> includePath( includeStart, includeEnd );
+
+                        // Replace relative paths and leave full paths alone
+                        if ( PathUtils::IsFullPath( includePath ) == false )
+                        {
+                            // Remove relative include
+                            StripTokenWithArg_MSVC( matchingCompilerArg, token, i );
+
+                            // Add full path include
+                            AStackString<> includeFullPath( tokenStart, includeStart );
+                            includeFullPath += job->GetRemoteSourceRoot();
+                            includeFullPath += '\\';
+                            includeFullPath += includePath;
+                            includeFullPath.Append( includeEnd, (size_t)( tokenEnd - includeEnd ) );
+
+                            fullArgs += includeFullPath;
+                            fullArgs.AddDelimiter();
+
+                            continue; // Include path has been replaced
+                        }
                     }
                 }
 
@@ -1949,12 +1993,22 @@ bool ObjectNode::BuildArgs( const Job * job, Args & fullArgs, Pass pass, bool us
             //  bad: /I"directory\"  - TODO:B Handle other args with this problem
             //  ok : /I\"directory\"
             //  ok : /I"directory"
-            if ( ObjectNode::IsStartOfCompilerArg_MSVC( token, "I\"" ) && token.EndsWith( "\\\"" ) )
+            if ( token.EndsWith( "\\\"" ) )
             {
-                fullArgs.Append( token.Get(), token.GetLength() - 2 );
-                fullArgs += '"';
-                fullArgs.AddDelimiter();
-                continue;
+                const char * matchingCompilerArg = IsStartingWithIncludeCompilerArg_MSVC( token );
+                if ( matchingCompilerArg != nullptr )
+                {
+                    const size_t matchingCompilerArgLength = AString::StrLen( matchingCompilerArg );
+
+                    const char* IncludeStart = token.Get() + matchingCompilerArgLength + 1;
+                    if ( *IncludeStart == '"' )
+                    {
+                        fullArgs.Append( token.Get(), token.GetLength() - 2 );
+                        fullArgs += '"';
+                        fullArgs.AddDelimiter();
+                        continue;
+                    }
+                }
             }
         }
 
