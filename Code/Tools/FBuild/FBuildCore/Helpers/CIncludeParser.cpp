@@ -225,6 +225,98 @@ bool CIncludeParser::ParseMSCL_Preprocessed( const char * compilerOutput,
     return true;
 }
 
+// Parse
+//------------------------------------------------------------------------------
+bool CIncludeParser::ParseMSCL_Preprocessed2( const char* compilerOutput,
+    size_t compilerOutputSize,
+    Array<PreprocessedLineDirectiveBookmark>& compilerOutputLineDirectiveBookmarks )
+{
+    // we require null terminated input
+    ASSERT( compilerOutput[ compilerOutputSize ] == 0 );
+    (void)compilerOutputSize;
+
+    ASSERT( compilerOutputLineDirectiveBookmarks.GetSize() == 0 );
+
+    const char* parserPos = compilerOutput;
+
+    const int lineDirectiveStringLength = 7;
+    const char lineDirectiveString[ lineDirectiveStringLength ] = "#line ";
+
+    for ( ;;)
+    {
+        parserPos = strstr( parserPos, lineDirectiveString );
+        if ( !parserPos )
+        {
+            break;
+        }
+
+        const char* lineStart = parserPos;
+        const char* lineNumber = lineStart + lineDirectiveStringLength - 1;
+
+        // search backwards for start of line
+    searchForLineStart:
+        // special case for first line (prevent buffer underread)
+        if ( lineStart == compilerOutput )
+        {
+            goto foundInclude;
+        }
+
+        // skip whitespace
+        --lineStart;
+        if ( (*lineStart == ' ') || (*lineStart == '\t') )
+        {
+            goto searchForLineStart;
+        }
+
+        // wrapped to previous line?
+        if ( *lineStart == '\n' )
+        {
+            ++lineStart;
+            goto foundInclude;
+        }
+
+        // hit some non-whitespace before the #line
+        continue; // look for another #line
+
+    foundInclude:
+
+        // go to opening quote
+        const char* incPos = strchr( lineNumber, '"' );
+        if ( !incPos )
+        {
+            return false;
+        }
+        ++incPos;
+
+        const char* incStart = incPos;
+
+        // find end of line
+        incPos = strchr( incPos, '"' );
+        if ( !incPos )
+        {
+            return false;
+        }
+
+        const char* incEnd = incPos;
+
+        if ( lineNumber[ 0 ] == '1' && lineNumber[ 1 ] == ' ' )
+        {
+            AddInclude( incStart, incEnd );
+        }
+
+        PreprocessedLineDirectiveBookmark lineDirective;
+        lineDirective.m_LineDirectiveStartIndex = lineStart - compilerOutput;
+        lineDirective.m_IncludeStartIndex = incStart - compilerOutput;
+        lineDirective.m_IncludeEndIndex = incEnd - compilerOutput;
+
+        compilerOutputLineDirectiveBookmarks.Append( lineDirective );
+
+        parserPos = incEnd;
+    }
+
+    return true;
+}
+
 // ParseToNextLineStaringWithHash
 //------------------------------------------------------------------------------
 /*static*/ void CIncludeParser::ParseToNextLineStartingWithHash( const char * & pos )
