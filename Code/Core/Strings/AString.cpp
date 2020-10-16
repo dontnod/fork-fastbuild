@@ -1380,6 +1380,13 @@ test_match:
     return 0; // strings identical upto 'num' chars
 }
 
+// Atoi
+//------------------------------------------------------------------------------
+/*static*/ int32_t AString::Atoi( const char* string )
+{
+    return atoi( string );
+}
+
 // Grow
 //------------------------------------------------------------------------------
 void AString::Grow( uint32_t newLength )
