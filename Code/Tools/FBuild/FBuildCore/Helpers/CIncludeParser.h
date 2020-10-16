@@ -8,6 +8,13 @@
 #include "Core/Containers/Array.h"
 #include "Core/Strings/AString.h"
 
+struct PreprocessedLineDirectiveBookmark
+{
+    int64_t m_LineDirectiveStartIndex;
+    int64_t m_IncludeStartIndex;
+    int64_t m_IncludeEndIndex;
+};
+
 // CIncludeParser class
 //------------------------------------------------------------------------------
 class CIncludeParser
@@ -18,6 +25,7 @@ public:
 
     bool ParseMSCL_Output( const char * compilerOutput, size_t compilerOutputSize );
     bool ParseMSCL_Preprocessed( const char * compilerOutput, size_t compilerOutputSize );
+    bool ParseMSCL_Preprocessed2( const char* compilerOutput, size_t compilerOutputSize, Array<PreprocessedLineDirectiveBookmark>& compilerOutputLineDirectiveBookmarks );
     bool ParseGCC_Preprocessed( const char * compilerOutput, size_t compilerOutputSize );
 
     const Array< AString > & GetIncludes() const { return m_Includes; }
