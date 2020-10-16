@@ -434,7 +434,7 @@ Node::BuildResult ObjectNode::DoBuildWithPreProcessor( Job * job, bool useDeopti
         }
 
         // preprocessed ok, try to extract includes
-        if ( ProcessIncludesWithPreProcessor( job ) == false )
+        if ( ProcessIncludesWithPreProcessor( fullArgs, job ) == false )
         {
             return NODE_RESULT_FAILED; // ProcessIncludesWithPreProcessor will have emitted an error
         }
@@ -765,9 +765,255 @@ bool ObjectNode::ProcessIncludesMSCL( const char * output, uint32_t outputSize )
     return true;
 }
 
+// MSCL_ListExternalIncludeDirectories
+//------------------------------------------------------------------------------
+static void MSCL_ListExternalIncludeDirectories( const Args& fullArgs, Array<AString>& externalIncludeDirectories )
+{
+    const AString& finalArgs = fullArgs.GetFinalArgs();
+    const Array<uint32_t>& argDelimiterIndices = fullArgs.GetDelimiterIndices();
+
+    uint32_t lastArgDelimiterIndex = 0;
+    bool processNextArgAsExternalInclude = false;
+
+    for ( size_t iterIndex = 0; iterIndex < argDelimiterIndices.GetSize(); ++iterIndex )
+    {
+        const uint32_t argDelimiterIndex = argDelimiterIndices[ iterIndex ];
+        ASSERT( argDelimiterIndex < finalArgs.GetLength() );
+
+        const char* argStart = finalArgs.Get() + lastArgDelimiterIndex + 1;
+        const char* argEnd = finalArgs.Get() + argDelimiterIndex;
+
+        const char* includeStart = argStart;
+        const char* includeEnd = argEnd;
+
+        bool processExternalInclude = false;
+
+        if ( processNextArgAsExternalInclude == false )
+        {
+            AStackString argString( argStart, argEnd );
+            bool isExternalInclude = false;
+            const char* includeArg = ObjectNode::IsStartingWithIncludeCompilerArg_MSVC( argString, &isExternalInclude );
+            if ( includeArg != nullptr && isExternalInclude )
+            {
+                const size_t matchingCompilerArgLength = AString::StrLen( includeArg );
+
+                includeStart += matchingCompilerArgLength + 1; // Skip /I or -I or /imsvc or -imsvc or /external:I or -external:I
+
+                if ( includeStart == includeEnd )
+                {
+                    WARNING( "Attempting to list external include directory: include path is empty in token ... " );
+                    processNextArgAsExternalInclude = true;
+                }
+                else
+                {
+                    processExternalInclude = true;
+                }
+            }
+        }
+        else
+        {
+            WARNING( "Attempting to use next token %.*s instead.\n", argEnd - argStart, argStart );
+            processNextArgAsExternalInclude = false;
+            processExternalInclude = true;
+        }
+
+        if ( processExternalInclude )
+        {
+            // strip quotes if present
+            if ( *includeStart == '"' )
+            {
+                ++includeStart;
+            }
+            if ( includeEnd[ -1 ] == '"' )
+            {
+                --includeEnd;
+            }
+            
+            AStackString includePath( includeStart, includeEnd );
+            // trying to sanitize include directory path
+            includePath.Replace( "\\\\", "\\" );
+            includePath.Replace( '\\', '/' );
+            externalIncludeDirectories.Append( includePath ); // adding include path with "/" as path seperator
+
+            includePath.Replace( "/", "\\\\" );
+            externalIncludeDirectories.Append( includePath ); // adding include path with "\\" as path seperator
+        }
+
+        lastArgDelimiterIndex = argDelimiterIndex;
+    }
+}
+
+// MSCL_IsExternalInclude
+//------------------------------------------------------------------------------
+static bool MSCL_IsExternalInclude( const char * includePath, const size_t includePathLength, const Array<AString>& externalIncludeDirectories )
+{
+    bool isExternalInclude = false;
+    for ( const AString& externalIncludeDirectory : externalIncludeDirectories )
+    {
+        const size_t includeDirectoryPathLength = externalIncludeDirectory.GetLength();
+        if ( includePathLength > includeDirectoryPathLength && AString::StrNCmp( includePath, externalIncludeDirectory.Get(), includeDirectoryPathLength ) == 0 )
+        {
+            isExternalInclude = true;
+            break;
+        }
+    }
+
+    return isExternalInclude;
+}
+
+// MSCL_WritePreprocessedCodeBlockToBuffer
+//------------------------------------------------------------------------------
+static size_t MSCL_WritePreprocessedCodeBlockToBuffer( const char * srcBuffer, char * destBuffer, const size_t destBufferFreeSize, const char * pushWarningString, const size_t pushWarningStringLength, const char* popWarningString, const size_t popWarningStringLength, const size_t codeBlockSize , bool addWarningPushPop )
+{
+    ASSERT( pushWarningStringLength + codeBlockSize + popWarningStringLength < destBufferFreeSize );
+    (void)destBufferFreeSize;
+
+    size_t destBufferyWrittenSize = 0;
+
+    if ( addWarningPushPop )
+    {
+        memcpy( (void*)(destBuffer + destBufferyWrittenSize), pushWarningString, pushWarningStringLength );
+        destBufferyWrittenSize += pushWarningStringLength;
+    }
+
+    memcpy( (void*)(destBuffer + destBufferyWrittenSize), srcBuffer, codeBlockSize );
+    destBufferyWrittenSize += codeBlockSize;
+
+    if ( addWarningPushPop )
+    {
+        memcpy( (void*)(destBuffer + destBufferyWrittenSize), popWarningString, popWarningStringLength );
+        destBufferyWrittenSize += popWarningStringLength;
+    }
+
+    return destBufferyWrittenSize;
+}
+
+// MSCL_ConvertPreprocessedOutputForExternalIncludes
+//------------------------------------------------------------------------------
+static char * MSCL_ConvertPreprocessedOutputForExternalIncludes( const char* output, const size_t outputSize, const Array<AString>& externalIncludeDirectories, const int externalIncludeWarningLevel, const Array<PreprocessedLineDirectiveBookmark>& outputLineDirectiveBookmarks, size_t& convertedOutputSize)
+{
+    ASSERT( 0 <= externalIncludeWarningLevel && externalIncludeWarningLevel <= 4 );
+    ASSERT( convertedOutputSize == 0 );
+
+    const size_t pushWarningStringLength = 26;
+    char pushWarningString[ pushWarningStringLength + 1 ] = "#pragma warning(push, N)\r\n";
+
+    const size_t popWarningStringLength = 22;
+    char popWarningString[ popWarningStringLength + 1 ] = "#pragma warning(pop)\r\n";
+
+    // update warning level in 'pushWarningString'
+    for ( int pushWarningStringIndex = pushWarningStringLength - 1; pushWarningStringIndex > 0; --pushWarningStringIndex )
+    {
+        char* pushWarningSubString = pushWarningString + pushWarningStringIndex;
+        if ( *pushWarningSubString == 'N' )
+        {
+            *pushWarningSubString = static_cast<char>('0' + externalIncludeWarningLevel);
+            break;
+        }
+    }
+
+    const size_t lineDirectiveCount = outputLineDirectiveBookmarks.GetSize();
+    const size_t bufferCopyExtraSize = lineDirectiveCount * (pushWarningStringLength + popWarningStringLength);
+    const size_t bufferCopySize = outputSize + bufferCopyExtraSize + 1;
+
+    char* bufferCopy = (char*)ALLOC( bufferCopySize );
+
+    size_t bufferCopyWrittenSize = 0;
+
+    bool codeBlockWrittenSinceChangedInclude = false;
+    int64_t lastLineDirectiveIncludeLength = 0;
+    int64_t lastLineDirectiveIncludeStartIndex = 0;
+    int64_t lastLineDirectiveEndIndex = 0;
+
+    for ( size_t lineDirectiveIndex = 0; lineDirectiveIndex < lineDirectiveCount; ++lineDirectiveIndex )
+    {
+        const PreprocessedLineDirectiveBookmark& lineDirectiveBookmark = outputLineDirectiveBookmarks[ lineDirectiveIndex ];
+
+        // copy code block (from source buffer last line directive end to new line directive)
+        const int64_t codeBlockSize = lineDirectiveBookmark.m_LineDirectiveStartIndex - lastLineDirectiveEndIndex;
+        if ( codeBlockSize > 0 )
+        {
+            const bool addWarningPushPop = (codeBlockWrittenSinceChangedInclude == false) && MSCL_IsExternalInclude( output + lastLineDirectiveIncludeStartIndex, static_cast<size_t>(lastLineDirectiveIncludeLength), externalIncludeDirectories );
+
+            bufferCopyWrittenSize += MSCL_WritePreprocessedCodeBlockToBuffer( output + lastLineDirectiveEndIndex, bufferCopy + bufferCopyWrittenSize, bufferCopySize - bufferCopyWrittenSize, pushWarningString, pushWarningStringLength, popWarningString, popWarningStringLength, static_cast<size_t>(codeBlockSize), addWarningPushPop );
+
+            codeBlockWrittenSinceChangedInclude = true;
+        }
+
+        // copy line directive
+        const int64_t lineDirectiveLength = lineDirectiveBookmark.m_IncludeEndIndex - lineDirectiveBookmark.m_LineDirectiveStartIndex + 1 + 2; //include quote character + TWO end of line characters on Windows "\r\n"
+        ASSERT( lineDirectiveLength > 0 );
+
+        ASSERT( bufferCopyWrittenSize + lineDirectiveLength < bufferCopySize );
+
+        memcpy( (void*)(bufferCopy + bufferCopyWrittenSize), output + lineDirectiveBookmark.m_LineDirectiveStartIndex, static_cast<size_t>(lineDirectiveLength) );
+        bufferCopyWrittenSize += lineDirectiveLength;
+
+        const int64_t lineDirectiveIncludeStartIndex = lineDirectiveBookmark.m_IncludeStartIndex;
+        const int64_t lineDirectiveIncludeLength = lineDirectiveBookmark.m_IncludeEndIndex - lineDirectiveIncludeStartIndex;
+        ASSERT( lineDirectiveIncludeLength > 0 );
+
+        // Detecting if changed include
+        if ( (lineDirectiveIncludeLength != lastLineDirectiveIncludeLength)
+            || AString::StrNCmp( output + lastLineDirectiveIncludeStartIndex, output + lineDirectiveIncludeStartIndex, static_cast<size_t>(lineDirectiveIncludeLength) ) != 0 )
+        {
+            codeBlockWrittenSinceChangedInclude = false;
+        }
+
+        lastLineDirectiveIncludeLength = lineDirectiveIncludeLength;
+        lastLineDirectiveIncludeStartIndex = lineDirectiveIncludeStartIndex;
+        lastLineDirectiveEndIndex = lineDirectiveBookmark.m_LineDirectiveStartIndex + lineDirectiveLength;
+    }
+
+    const int64_t codeBlockSize = static_cast<int64_t>(outputSize) - 1 - lastLineDirectiveEndIndex;
+    if ( codeBlockSize > 0 )
+    {
+        const bool addWarningPushPop = (codeBlockWrittenSinceChangedInclude == false) && MSCL_IsExternalInclude( output + lastLineDirectiveIncludeStartIndex, static_cast<size_t>(lastLineDirectiveIncludeLength), externalIncludeDirectories );
+
+        bufferCopyWrittenSize += MSCL_WritePreprocessedCodeBlockToBuffer( output + lastLineDirectiveEndIndex, bufferCopy + bufferCopyWrittenSize, bufferCopySize - bufferCopyWrittenSize, pushWarningString, pushWarningStringLength, popWarningString, popWarningStringLength, static_cast<size_t>(codeBlockSize), addWarningPushPop );
+
+        codeBlockWrittenSinceChangedInclude = true;
+    }
+
+    // extra whitespaces + zero at the end of buffer
+    ASSERT( bufferCopySize > bufferCopyWrittenSize );
+    memset( (void*)(bufferCopy + bufferCopyWrittenSize), ' ', bufferCopySize - bufferCopyWrittenSize - 1);
+    bufferCopy[ bufferCopySize - 1 ] = 0;
+
+    convertedOutputSize = bufferCopySize;
+
+    return bufferCopy;
+}
+
 // ProcessIncludesWithPreProcessor
 //------------------------------------------------------------------------------
-bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
+static bool MSCL_ShouldUseExternalIncludeMode( const Args& fullArgs , int& externalIncludeWarningLevel )
+{
+    bool useExternalIncludeMode = false;
+
+    // TODO DNE (MHO) - expose useExternalIncludeMode through Fastbuild options ?
+    if ( fullArgs.GetRawArgs().Find( "/experimental:external" ) )
+    {
+        const size_t externalIncludeWarningLevelStringLength = 11;
+        char externalIncludeWarningLevelString[ externalIncludeWarningLevelStringLength + 1 ] = "/external:W";
+        const char* externalIncludeWarningLevelArg = fullArgs.GetRawArgs().Find( externalIncludeWarningLevelString );
+        if ( externalIncludeWarningLevelArg != nullptr )
+        {
+            int warningLevel = AString::Atoi( externalIncludeWarningLevelArg + externalIncludeWarningLevelStringLength );
+            if ( 0 <= warningLevel && warningLevel <= 4 )
+            {
+                useExternalIncludeMode = true;
+                externalIncludeWarningLevel = warningLevel;
+            }
+        }
+    }
+
+    return useExternalIncludeMode;
+}
+
+// ProcessIncludesWithPreProcessor
+//------------------------------------------------------------------------------
+bool ObjectNode::ProcessIncludesWithPreProcessor( const Args& fullArgs, Job * job )
 {
     Timer t;
 
@@ -799,8 +1045,38 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
         {
             msvcStyle = GetFlag( FLAG_MSVC ) || GetFlag( FLAG_CUDA_NVCC );
         }
-        bool result = msvcStyle ? parser.ParseMSCL_Preprocessed( output, outputSize )
-                                : parser.ParseGCC_Preprocessed( output, outputSize );
+
+        int externalIncludeWarningLevel = -1;
+        const bool useExternalIncludeMode = msvcStyle && MSCL_ShouldUseExternalIncludeMode(fullArgs, externalIncludeWarningLevel);
+
+        bool result = false;
+
+        if ( !msvcStyle )
+        {
+            parser.ParseGCC_Preprocessed( output, outputSize );
+        }
+        else if ( !useExternalIncludeMode )
+        {
+            result = parser.ParseMSCL_Preprocessed( output, outputSize );
+        }
+        else
+        {
+            Array<PreprocessedLineDirectiveBookmark> outputLineDirectiveBookmarks;
+            outputLineDirectiveBookmarks.SetCapacity( 10000 );
+
+            result = parser.ParseMSCL_Preprocessed2( output, outputSize, outputLineDirectiveBookmarks );
+            if ( result )
+            {
+                Array<AString> externalIncludeDirectories;
+                MSCL_ListExternalIncludeDirectories( fullArgs, externalIncludeDirectories );
+
+                size_t convertedOutputSize = 0;
+                char * convertedOutput = MSCL_ConvertPreprocessedOutputForExternalIncludes( output, outputSize, externalIncludeDirectories, externalIncludeWarningLevel, outputLineDirectiveBookmarks, convertedOutputSize );
+
+                job->OwnData( convertedOutput, convertedOutputSize );
+            }
+        }
+
         if ( result == false )
         {
             FLOG_ERROR( "Failed to process includes for '%s'", GetName().Get() );

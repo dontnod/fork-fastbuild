@@ -113,7 +113,7 @@ private:
     BuildResult DoBuildOther( Job * job, bool useDeoptimization );
 
     bool ProcessIncludesMSCL( const char * output, uint32_t outputSize );
-    bool ProcessIncludesWithPreProcessor( Job * job );
+    bool ProcessIncludesWithPreProcessor( const Args& fullArgs, Job * job );
 
     const AString & GetCacheName( Job * job ) const;
     bool RetrieveFromCache( Job * job );

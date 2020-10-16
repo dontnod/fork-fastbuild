@@ -52,6 +52,8 @@ public:
     const AString& GetRawArgs() const   { return m_Args; }
     const AString& GetFinalArgs() const { ASSERT( m_Finalized ); return m_ResponseFileArgs.IsEmpty() ? m_Args : m_ResponseFileArgs; }
 
+    const Array<uint32_t>& GetDelimiterIndices() const { return m_DelimiterIndices; }
+
     // helper functions
     static void StripQuotes( const char * start, const char * end, AString & out );
 
