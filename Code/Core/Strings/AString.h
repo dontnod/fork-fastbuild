@@ -159,6 +159,7 @@ public:
     static size_t StrLen( const char * string );
     static int32_t StrNCmp( const char * a, const char * b, size_t num );
     static int32_t StrNCmpI( const char * a, const char * b, size_t num );
+    static int32_t Atoi( const char * string );
 
 protected:
     enum : uint32_t { MEM_MUST_BE_FREED_FLAG    = 0x00000001 };
