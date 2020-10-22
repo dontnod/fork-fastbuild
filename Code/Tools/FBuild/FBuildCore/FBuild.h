@@ -51,6 +51,8 @@ public:
 
     const FBuildOptions & GetOptions() const { return m_Options; }
 
+    const Timer& GetTimer() const { return m_Timer; }
+
     const AString & GetWorkingDir() const { return m_Options.GetWorkingDir(); }
 
     static const char * GetDefaultBFFFileName();

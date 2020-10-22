@@ -62,6 +62,10 @@ protected:
     static AStackString<> s_TmpRoot;
 
     static bool IsSystemMemoryStressed();
+
+    static volatile int64_t * GetTotalTimeWithSystemMemoryStressedInternal();
+    static int64_t GetTotalTimeWithSystemMemoryStressed();
+    static int64_t AddTimeWithSystemMemoryStressed( const int64_t additionalTimeWithSystemMemoryStressed );
 };
 
 //------------------------------------------------------------------------------
