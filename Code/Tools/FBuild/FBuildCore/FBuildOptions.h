@@ -100,6 +100,7 @@ public:
     bool        m_ContinueAfterDBMove               = false;
 
     uint32_t    m_MinPercentMemoryAvailable         = 10; // minimum percentage of system memory to leave available for a worker to start a new job
+    uint32_t    m_WaitDurationWhenMemoryStressed    = 5; // wait duration in seconds for workers if not enough system memory is available to start a new job
     uint32_t    m_NumWorkerThreads                  = 0; // True default detected in constructor
     AString     m_ConfigFile;
 
