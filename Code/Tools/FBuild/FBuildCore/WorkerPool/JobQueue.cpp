@@ -113,7 +113,7 @@ Job * JobSubQueue::RemoveJob()
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
-JobQueue::JobQueue( uint32_t numWorkerThreads ) :
+JobQueue::JobQueue( uint32_t numWorkerThreads, uint32_t numWorkerThreadsToBuildSecondPass ) :
     m_NumLocalJobsActive( 0 ),
     m_DistributableJobs_Available( 1024, true ),
     m_DistributableJobs_InProgress( 1024, true ),
@@ -127,6 +127,8 @@ JobQueue::JobQueue( uint32_t numWorkerThreads ) :
 
     WorkerThread::InitTmpDir();
 
+    ASSERT( numWorkerThreadsToBuildSecondPass > 0 || numWorkerThreads == 0 );
+
     for ( uint32_t i=0; i<numWorkerThreads; ++i )
     {
         // identify each worker with an id starting from 1
@@ -134,6 +136,7 @@ JobQueue::JobQueue( uint32_t numWorkerThreads ) :
         uint32_t threadIndex = ( i + 1 );
         WorkerThread * wt = FNEW( WorkerThread( threadIndex ) );
         wt->Init();
+        wt->SetCanBuildSecondPass( i < numWorkerThreadsToBuildSecondPass );
         m_Workers.Append( wt );
     }
 }
