@@ -32,6 +32,7 @@ FBuildOptions::FBuildOptions()
 
     // Default to NUMBER_OF_PROCESSORS
     m_NumWorkerThreads = Env::GetNumProcessors();
+    m_NumWorkerThreadsToBuildSecondPass = m_NumWorkerThreads;
 
     // Default working dir is the system working dir
     AStackString<> workingDir;
@@ -287,6 +288,19 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
             }
             PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
             PRAGMA_DISABLE_PUSH_CLANG_WINDOWS( "-Wdeprecated-declarations" ) // 'sscanf' is deprecated: This function or variable may be unsafe...
+            else if ( thisArg.BeginsWith( "-w" ) &&
+                      sscanf( thisArg.Get(), "-w%u", &m_MemoryBudgetToBuildSecondPass ) == 1 ) // TODO:C Consider using sscanf_s
+            PRAGMA_DISABLE_POP_CLANG_WINDOWS // -Wdeprecated-declarations
+            PRAGMA_DISABLE_POP_MSVC // 4996
+            {
+                // only accept within sensible range
+                if ( m_MemoryBudgetToBuildSecondPass <= 8000 )
+                {
+                    continue;
+                }
+            }
+            PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
+            PRAGMA_DISABLE_PUSH_CLANG_WINDOWS( "-Wdeprecated-declarations" ) // 'sscanf' is deprecated: This function or variable may be unsafe...
             else if ( thisArg.BeginsWith( "-j" ) &&
                       sscanf( thisArg.Get(), "-j%u", &m_NumWorkerThreads ) == 1 ) // TODO:C Consider using sscanf_s
             PRAGMA_DISABLE_POP_CLANG_WINDOWS // -Wdeprecated-declarations
@@ -295,6 +309,7 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
                 // only accept within sensible range
                 if ( m_NumWorkerThreads <= 256 )
                 {
+                    m_NumWorkerThreadsToBuildSecondPass = m_NumWorkerThreads;
                     continue; // 'numWorkers' will contain value now
                 }
             }
@@ -490,27 +505,61 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
     }
 
     // Clamp number of workers according to total system memory
-    if ( m_MinPercentMemoryAvailable > 0 )
+    if ( m_NumWorkerThreads > 0 && m_MinPercentMemoryAvailable > 0 )
     {
         size_t systemFree, systemTotal;
         GetSystemMemorySize( &systemFree, &systemTotal );
 
         if ( systemTotal > 0 )
         {
-            int64_t systemUsable = int64_t( systemFree );
-            systemUsable -= ( ( systemTotal * m_MinPercentMemoryAvailable ) / 100 ); // user reserve
+            const size_t systemReserved = ( systemTotal * m_MinPercentMemoryAvailable ) / 100;
 
+            int64_t systemUsable = int64_t( systemFree ) - int64_t( systemReserved );
             if ( systemUsable < 0 )
             {
                 systemUsable = 0;
             }
 
+            const int64_t memoryBudgetPerWorkerToBuildSecondPass = int64_t( m_MemoryBudgetToBuildSecondPass ) << 20; // megabytes to bytes
+            if ( memoryBudgetPerWorkerToBuildSecondPass > 0 )
+            {
+                uint32_t numWorkersUsableToBuildSecondPass = Math::Min( uint32_t( systemUsable / memoryBudgetPerWorkerToBuildSecondPass ), m_NumWorkerThreads );
+                if ( numWorkersUsableToBuildSecondPass == 0 )
+                {
+                    FLOG_WARN( "Fastbuild needs at least 1 worker to build second pass jobs in case remote workers are not available\n"
+                        "Multiple actions to consider:\n"
+                        " - reducing memory budget to build second pass ( currently %u mb )\n"
+                        " - reducing memory to leave available for the rest of the system ( currently %u mb corresponding to %u%% of RAM available)\n"
+                        " - close some applications / processes currently running on the machnine to leave more memory available ( currently %u mb )\n"
+                        " - add physical RAM to your machine ( currently %u mb )\n",
+                        m_MemoryBudgetToBuildSecondPass,
+                        uint32_t( systemReserved >> 20 ),
+                        m_MinPercentMemoryAvailable,
+                        uint32_t( systemFree >> 20 ),
+                        uint32_t( systemTotal >> 20 ) );
+
+                    numWorkersUsableToBuildSecondPass = 1;
+                }
+
+                if ( m_NumWorkerThreadsToBuildSecondPass > numWorkersUsableToBuildSecondPass )
+                {
+                    OUTPUT(
+                        "Only use %u worker threads to build second pass instead of %u to limit memory usage ( %u mb budgeted per worker thread )\n",
+                        uint32_t( numWorkersUsableToBuildSecondPass ),
+                        uint32_t( m_NumWorkerThreadsToBuildSecondPass ),
+                        uint32_t( memoryBudgetPerWorkerToBuildSecondPass >> 20 ) );
+
+                    m_NumWorkerThreadsToBuildSecondPass = numWorkersUsableToBuildSecondPass;
+                }
+            }
+
             OUTPUT(
-                "Use %u worker threads :\n"
+                "Use %u worker threads ( %u can build second pass ) :\n"
                 " - System memory available %u / %u mb,\n"
                 " - Should leave at least %u%% of RAM available,\n"
                 " - Worker threads should try to only use %u mb in total for local jobs (but might get higher).\n",
                 uint32_t( m_NumWorkerThreads ),
+                uint32_t( m_NumWorkerThreadsToBuildSecondPass ),
                 uint32_t( systemFree >> 20 ),
                 uint32_t( systemTotal >> 20 ),
                 uint32_t( m_MinPercentMemoryAvailable ),
@@ -645,6 +694,8 @@ void FBuildOptions::DisplayHelp( const AString & programName ) const
             "                   -wrapper (Windows)\n"
             " -m[x]             Explicitly set minimum percentage of memory available to X,\n"
             "                   instead of default 0%% threshold.\n"
+            " -w[x]             Explicitly set needed memory per worker for build second pass jobs to X megabytes,\n"
+            "                   instead of default 0 Mb.\n"
             " -j<x>             Explicitly set LOCAL worker thread count X, instead of\n"
             "                   default of hardware thread count.\n"
             " -monitor          Emit a machine-readable file while building.\n"
