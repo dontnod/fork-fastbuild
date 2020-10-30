@@ -490,7 +490,7 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
     }
 
     // Clamp number of workers according to total system memory
-    if ( m_MinPercentMemoryAvailable )
+    if ( m_MinPercentMemoryAvailable > 0 )
     {
         size_t systemFree, systemTotal;
         GetSystemMemorySize( &systemFree, &systemTotal );
@@ -509,7 +509,7 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
                 "Use %u worker threads :\n"
                 " - System memory available %u / %u mb,\n"
                 " - Should leave at least %u%% of RAM available,\n"
-                " - Worker threads should try to only use %u mb for local jobs (but might get higher).\n",
+                " - Worker threads should try to only use %u mb in total for local jobs (but might get higher).\n",
                 uint32_t( m_NumWorkerThreads ),
                 uint32_t( systemFree >> 20 ),
                 uint32_t( systemTotal >> 20 ),
@@ -644,7 +644,7 @@ void FBuildOptions::DisplayHelp( const AString & programName ) const
             "                   Enables: -noprogress, -fixuperrorpaths &\n"
             "                   -wrapper (Windows)\n"
             " -m[x]             Explicitly set minimum percentage of memory available to X,\n"
-            "                   instead of default 10%% threshold.\n"
+            "                   instead of default 0%% threshold.\n"
             " -j<x>             Explicitly set LOCAL worker thread count X, instead of\n"
             "                   default of hardware thread count.\n"
             " -monitor          Emit a machine-readable file while building.\n"
