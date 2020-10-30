@@ -101,7 +101,9 @@ public:
 
     uint32_t    m_MinPercentMemoryAvailable         = 0; // minimum percentage of system memory to leave available for a worker to start a new job
     uint32_t    m_WaitDurationWhenMemoryStressed    = 5; // wait duration in seconds for workers if not enough system memory is available to start a new job
+    uint32_t    m_MemoryBudgetToBuildSecondPass     = 0; // estimated minimum memory in megabytes available for worker to start a local job with second pass to build
     uint32_t    m_NumWorkerThreads                  = 0; // True default detected in constructor
+    uint32_t    m_NumWorkerThreadsToBuildSecondPass = 0; // True default detected in constructor
     AString     m_ConfigFile;
 
     inline uint32_t GetWorkingDirHash() const                   { return m_WorkingDirHash; }
