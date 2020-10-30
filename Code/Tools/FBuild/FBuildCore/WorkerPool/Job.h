@@ -88,6 +88,9 @@ public:
     inline void                 SetDistributionState( DistributionState state ) { m_DistributionState = state; }
     inline DistributionState    GetDistributionState() const                    { return m_DistributionState; }
 
+    void SetTryPostponeLocalBuildToSecondPass( bool postponeBuildToSecondPass ) { m_TryPostponeBuildToSecondPass = postponeBuildToSecondPass; }
+    bool ShouldTryPostponeLocalBuildToSecondPass() const { return m_TryPostponeBuildToSecondPass; }
+
     // Access total memory usage by job data
     static uint64_t             GetTotalLocalDataMemoryUsage();
 
@@ -100,6 +103,7 @@ private:
     volatile bool       m_Abort             = false;
     bool                m_DataIsCompressed  = false;
     bool                m_IsLocal           = true;
+    bool                m_TryPostponeBuildToSecondPass = false;
     uint8_t             m_SystemErrorCount  = 0; // On client, the total error count, on the worker a flag for the current attempt
     DistributionState   m_DistributionState = DIST_NONE;
     AString             m_RemoteName;
