@@ -16,6 +16,7 @@
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
 #include "Core/FileIO/PathUtils.h"
+#include "Core/Mem/SystemMemory.h"
 #include "Core/Process/Atomic.h"
 #include "Core/Process/Thread.h"
 #include "Core/Profile/Profile.h"
@@ -145,7 +146,18 @@ void WorkerThread::WaitForStop()
             break;
         }
 
-        Update();
+        if ( IsSystemMemoryStressed() )
+        {
+            const uint32_t waitDuration = FBuild::Get().GetOptions().m_WaitDurationWhenMemoryStressed;
+
+            FLOG_WARN( "FBuild local worker %d : waiting for %d seconds", this->m_ThreadIndex, waitDuration );
+
+            JobQueue::Get().WorkerThreadWait( waitDuration * 1000 );
+
+            continue;
+        }
+
+        Update( CanBuildSecondPass() );
     }
 
     AtomicStoreRelaxed( &m_Exited, true );
@@ -161,8 +173,33 @@ void WorkerThread::WaitForStop()
 
 // Update
 //------------------------------------------------------------------------------
-/*static*/ bool WorkerThread::Update()
+/*static*/ bool WorkerThread::Update( const bool canBuildSecondPass )
 {
+    // try to find some local job to build second pass
+    if ( canBuildSecondPass )
+    {
+        Job* job = JobQueue::IsValid() ? JobQueue::Get().GetLocalJobToBuildSecondPass() : nullptr;
+        if ( job != nullptr )
+        {
+            // make sure state is as expected
+            ASSERT( job->GetNode()->GetState() == Node::BUILDING );
+            ASSERT( job->GetNode()->SupportsSecondBuildPass() );
+            ASSERT( job->IsLocal() );
+
+            // process the work
+            Node::BuildResult result = JobQueueRemote::DoBuild( job, false ); // which calls Node::DoBuild2() instead of Node::DoBuild()
+
+            if ( result == Node::NODE_RESULT_FAILED )
+            {
+                FBuild::OnBuildError();
+            }
+
+            JobQueue::Get().FinishedProcessingJob( job, (result != Node::NODE_RESULT_FAILED), false ); // returning a local job
+
+            return true; // did some work
+        }
+    }
+
     // try to find some work to do
     Job * job = JobQueue::IsValid() ? JobQueue::Get().GetJobToProcess() : nullptr;
     if ( job != nullptr )
@@ -170,8 +207,13 @@ void WorkerThread::WaitForStop()
         // make sure state is as expected
         ASSERT( job->GetNode()->GetState() == Node::BUILDING );
 
+        ASSERT( job->ShouldTryPostponeLocalBuildToSecondPass() == false );
+        job->SetTryPostponeLocalBuildToSecondPass( !canBuildSecondPass );
+
         // process the work
         Node::BuildResult result = JobQueue::DoBuild( job );
+
+        job->SetTryPostponeLocalBuildToSecondPass( false );
 
         if ( result == Node::NODE_RESULT_FAILED )
         {
@@ -182,6 +224,10 @@ void WorkerThread::WaitForStop()
         {
             // Only distributable jobs have two passes, and the 2nd pass is always distributable
             JobQueue::Get().QueueDistributableJob( job );
+        }
+        else if ( result == Node::NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS )
+        {
+            JobQueue::Get().QueueLocalJobToBuildSecondPass( job );
         }
         else
         {
@@ -194,7 +240,7 @@ void WorkerThread::WaitForStop()
     // no local job, see if we can do one from the remote queue
     if ( FBuild::Get().GetOptions().m_NoLocalConsumptionOfRemoteJobs == false )
     {
-        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToProcess( false ) : nullptr;
+        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToProcess( false, canBuildSecondPass ) : nullptr;
         if ( job != nullptr )
         {
             // process the work
@@ -214,7 +260,7 @@ void WorkerThread::WaitForStop()
     // race remote jobs
     if ( FBuild::Get().GetOptions().m_AllowLocalRace )
     {
-        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToRace() : nullptr;
+        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToRace( canBuildSecondPass ) : nullptr;
         if ( job != nullptr )
         {
             // process the work
@@ -283,6 +329,90 @@ void WorkerThread::WaitForStop()
     char * lastSlash = tmpFileName.FindLast( NATIVE_SLASH );
     tmpFileName.SetLength( (uint32_t)( lastSlash - tmpFileName.Get() ) );
     FileIO::EnsurePathExists( tmpFileName );
+}
+
+// Returns true if using more than 90% percent of system memory.
+//------------------------------------------------------------------------------
+/*static*/ bool WorkerThread::IsSystemMemoryStressed()
+{
+    static volatile int64_t s_lastSystemMemoryStressedTime = -1;
+
+    size_t free, total;
+    GetSystemMemorySize( &free, &total );
+
+    if ( total > 0 )
+    {
+        const FBuild& build = FBuild::Get();
+        const FBuildOptions& options = build.GetOptions();
+
+        const uint32_t minPercentMemoryAvailable = options.m_MinPercentMemoryAvailable;
+        if ( ( free * 100 ) < ( total * minPercentMemoryAvailable ) )
+        {
+            MutexHolder lock( WorkerThread::s_TmpRootMutex );
+
+            const int64_t elapsedTime = build.GetTimer().GetElapsedCycleCount();
+
+            if ( AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime ) < 0 )
+            {
+                AtomicStoreRelaxed( &s_lastSystemMemoryStressedTime , elapsedTime );
+            }
+
+            FLOG_WARN( "FBuild after %.1f s : available system memory under %d%% ( %u / %u mb available, %.2f%% used )",
+                elapsedTime * Timer::GetFrequencyInvFloat(),
+                minPercentMemoryAvailable,
+                uint32_t( free >> 20 ),
+                uint32_t( total >> 20 ),
+                (total - free) * 100.0f / total );
+
+            return true;
+        }
+        else if ( AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime ) >= 0 )
+        {
+            MutexHolder lock( WorkerThread::s_TmpRootMutex );
+
+            const int64_t lastSystemMemoryStressedTime = AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime );
+            if ( lastSystemMemoryStressedTime >= 0 )
+            {
+                const int64_t elaspedTime = build.GetTimer().GetElapsedCycleCount();
+                const int64_t stressedTime = elaspedTime - lastSystemMemoryStressedTime;
+                const int64_t newTotalTime = AddTimeWithSystemMemoryStressed( stressedTime );
+
+                FLOG_WARN( "FBuild after %.1f s : waiting worker threads detected available system memory under %d%% for %.1f seconds ( %.1f in total since build start )",
+                    elaspedTime * Timer::GetFrequencyInvFloat(),
+                    minPercentMemoryAvailable,
+                    stressedTime * Timer::GetFrequencyInvFloat(),
+                    newTotalTime * Timer::GetFrequencyInvFloat() );
+
+                AtomicStoreRelaxed( &s_lastSystemMemoryStressedTime, -1 );
+            }
+        }
+    }
+
+    return false;
+}
+
+// Returns the static volatile variable storing the Total Time With System Memory Stressed
+//------------------------------------------------------------------------------
+/*static*/ volatile int64_t * WorkerThread::GetTotalTimeWithSystemMemoryStressedInternal()
+{
+    static volatile int64_t s_totalSystemMemoryStressedTimeInCycle = 0;
+
+    return &s_totalSystemMemoryStressedTimeInCycle;
+}
+
+//------------------------------------------------------------------------------
+/*static*/  int64_t WorkerThread::GetTotalTimeWithSystemMemoryStressed()
+{
+    return AtomicLoadRelaxed( GetTotalTimeWithSystemMemoryStressedInternal() );
+}
+
+//------------------------------------------------------------------------------
+/*static*/  int64_t WorkerThread::AddTimeWithSystemMemoryStressed( const int64_t additionalTimeWithSystemMemoryStressed )
+{
+    const int64_t newTotalTimeWithSystemMemoryStressed = GetTotalTimeWithSystemMemoryStressed() + additionalTimeWithSystemMemoryStressed;
+    AtomicStoreRelaxed( GetTotalTimeWithSystemMemoryStressedInternal(), newTotalTimeWithSystemMemoryStressed );
+
+    return newTotalTimeWithSystemMemoryStressed;
 }
 
 //------------------------------------------------------------------------------

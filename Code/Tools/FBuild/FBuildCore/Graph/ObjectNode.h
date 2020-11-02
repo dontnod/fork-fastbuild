@@ -79,6 +79,8 @@ public:
     inline bool IsUsingPDB() const { return GetFlag( FLAG_USING_PDB ); }
     inline bool IsUsingStaticAnalysisMSVC() const { return GetFlag( FLAG_STATIC_ANALYSIS_MSVC ); }
 
+    virtual bool SupportsSecondBuildPass() const override { return true; }
+
     virtual void SaveRemote( IOStream & stream ) const override;
     static Node * LoadRemote( IOStream & stream );
 

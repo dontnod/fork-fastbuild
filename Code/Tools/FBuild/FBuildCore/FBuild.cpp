@@ -379,7 +379,7 @@ bool FBuild::Build( Node * nodeToBuild )
     AtomicStoreRelaxed( &s_AbortBuild, false ); // allow multiple runs in same process
 
     // create worker threads
-    m_JobQueue = FNEW( JobQueue( m_Options.m_NumWorkerThreads ) );
+    m_JobQueue = FNEW( JobQueue( m_Options.m_NumWorkerThreads, m_Options.m_NumWorkerThreadsToBuildSecondPass ) );
 
     // create the connection management system if needed
     // (must be after JobQueue is created)
