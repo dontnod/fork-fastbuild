@@ -263,6 +263,8 @@ NodeGraph::LoadResult NodeGraph::Load( IOStream & stream, const char * nodeGraph
     // Take not of whether we need to reparse
     bool bffNeedsReparsing = false;
 
+    const AString& rootPath = FBuild::Get().GetRootPath();
+
     // check if any files used have changed
     for ( size_t i=0; i<usedFiles.GetSize(); ++i )
     {
@@ -291,7 +293,7 @@ NodeGraph::LoadResult NodeGraph::Load( IOStream & stream, const char * nodeGraph
             return LoadResult::LOAD_ERROR; // error reading
         }
 
-        const uint64_t dataHash = xxHash::Calc64( mem.Get(), size );
+        const uint64_t dataHash = FBuild::Hash64( rootPath, mem.Get(), size );
         if ( dataHash == usedFiles[ i ].m_DataHash )
         {
             // file didn't change, update stored timestamp to save time on the next run
@@ -387,7 +389,7 @@ NodeGraph::LoadResult NodeGraph::Load( IOStream & stream, const char * nodeGraph
     else
     {
         // If the Environment will be overriden, make sure we use the LIB from that
-        const uint32_t libEnvVarHash = ( envStringSize > 0 ) ? xxHash::Calc32( libEnvVar ) : GetLibEnvVarHash();
+        const uint32_t libEnvVarHash = ( envStringSize > 0 ) ? FBuild::Hash32( rootPath, libEnvVar ) : GetLibEnvVarHash();
         if ( libEnvVarHashInDB != libEnvVarHash )
         {
             // make sure the user knows why some things might re-build (only the first thing warns)
@@ -1752,7 +1754,7 @@ uint32_t NodeGraph::GetLibEnvVarHash() const
     // ok for LIB var to be missing, we'll hash the empty string
     AStackString<> libVar;
     FBuild::Get().GetLibEnvVar( libVar );
-    return xxHash::Calc32( libVar );
+    return FBuild::Hash32( FBuild::Get().GetRootPath(), libVar );
 }
 
 // IsCleanPath

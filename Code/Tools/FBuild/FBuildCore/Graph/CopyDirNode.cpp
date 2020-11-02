@@ -11,6 +11,8 @@
 #include "Tools/FBuild/FBuildCore/Graph/CopyFileNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/DirectoryListNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
+#include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
+#include "Tools/FBuild/FBuildCore/Helpers/ToolManifest.h"
 
 #include "Core/Math/xxHash.h"
 #include "Core/Strings/AStackString.h"
@@ -177,7 +179,7 @@ CopyDirNode::~CopyDirNode() = default;
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult CopyDirNode::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult CopyDirNode::DoBuild( Job * job )
 {
     if (m_DynamicDependencies.IsEmpty())
     {
@@ -193,7 +195,12 @@ CopyDirNode::~CopyDirNode() = default;
             ASSERT( cn->GetStamp() );
             stamps.Append( cn->GetStamp() );
         }
-        m_Stamp = xxHash::Calc64( &stamps[ 0 ], ( stamps.GetSize() * sizeof( uint64_t ) ) );
+        // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+        const AString& rootPath = (job->IsLocal()
+            ? FBuild::Get().GetRootPath()
+            : job->GetToolManifest()->GetRemoteBffRootPath());
+
+        m_Stamp = FBuild::Hash64(rootPath, &stamps[ 0 ], ( stamps.GetSize() * sizeof( uint64_t ) ) );
     }
 
     return NODE_RESULT_OK;

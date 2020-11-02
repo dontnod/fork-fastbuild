@@ -82,7 +82,7 @@ void TestIncludeParser::TestMSVCPreprocessedOutput() const
     {
         for ( size_t i = 0; i < repeatCount; ++i )
         {
-            CIncludeParser parser;
+            CIncludeParser parser(AString{});
             TEST_ASSERT( parser.ParseMSCL_Preprocessed( buffer->Get(), buffer->GetLength() ) );
 
             // check number of includes found to prevent future regressions
@@ -111,7 +111,7 @@ void TestIncludeParser::TestMSVCPreprocessedOutput_Indent() const
                             " \t \t \t#line 1 \"C:\\fileF.cpp\"\r\n";
     const size_t testDataSize = AString::StrLen( testData );
 
-    CIncludeParser parser;
+    CIncludeParser parser(AString{});
     TEST_ASSERT( parser.ParseMSCL_Preprocessed( testData, testDataSize ) );
 
     // check number of includes found to prevent future regressions
@@ -153,7 +153,7 @@ void TestIncludeParser::TestMSVCShowIncludesOutput() const
     {
         for ( size_t i = 0; i < repeatCount; ++i )
         {
-            CIncludeParser parser;
+            CIncludeParser parser(AString{});
             TEST_ASSERT( parser.ParseMSCL_Output( buffer->Get(), buffer->GetLength() ) );
 
             // check number of includes found to prevent future regressions
@@ -227,7 +227,7 @@ void TestIncludeParser::TestMSVC_ShowIncludesWithWarnings() const
     const AString * buffers[ 2 ] = { &mem, &mem2 };
     for ( const AString * buffer : buffers )
     {
-        CIncludeParser parser;
+        CIncludeParser parser(AString{});
         TEST_ASSERT( parser.ParseMSCL_Output( buffer->Get(), buffer->GetLength() ) );
 
         // check number of includes found to prevent future regressions
@@ -272,7 +272,7 @@ void TestIncludeParser::TestGCCPreprocessedOutput() const
     {
         for ( size_t i = 0; i < repeatCount; ++i )
         {
-            CIncludeParser parser;
+            CIncludeParser parser(AString{});
             TEST_ASSERT( parser.ParseGCC_Preprocessed( buffer->Get(), buffer->GetLength() ) );
 
             // check number of includes found to prevent future regressions
@@ -322,7 +322,7 @@ void TestIncludeParser::TestClangPreprocessedOutput() const
     {
         for ( size_t i = 0; i < repeatCount; ++i )
         {
-            CIncludeParser parser;
+            CIncludeParser parser(AString{});
             TEST_ASSERT( parser.ParseGCC_Preprocessed( buffer->Get(), buffer->GetLength() ) );
 
             // check number of includes found to prevent future regressions
@@ -371,7 +371,7 @@ void TestIncludeParser::TestClangMSExtensionsPreprocessedOutput() const
     {
         for ( size_t i = 0; i < repeatCount; ++i )
         {
-            CIncludeParser parser;
+            CIncludeParser parser(AString{});
             TEST_ASSERT( parser.ParseGCC_Preprocessed( buffer->Get(), buffer->GetLength() ) );
 
             // check number of includes found to prevent future regressions
@@ -396,7 +396,7 @@ void TestIncludeParser::TestEdgeCases() const
     // include on last line
     {
         AStackString<> data( "#line 1 \"hello\"" );
-        CIncludeParser parser;
+        CIncludeParser parser(AString{});
         TEST_ASSERT( parser.ParseMSCL_Preprocessed( data.Get(), data.GetLength() ) );
         TEST_ASSERT( parser.GetIncludes().GetSize() == 1 );
         #ifdef DEBUG
@@ -407,7 +407,7 @@ void TestIncludeParser::TestEdgeCases() const
     // empty
     {
         AStackString<> data( "" );
-        CIncludeParser parser;
+        CIncludeParser parser(AString{});
         TEST_ASSERT( parser.ParseMSCL_Preprocessed( data.Get(), data.GetLength() ) );
         TEST_ASSERT( parser.GetIncludes().GetSize() == 0 );
         #ifdef DEBUG
@@ -419,7 +419,7 @@ void TestIncludeParser::TestEdgeCases() const
     {
         AStackString<> data( "#pragma message\"hello\"\n#   pragma message\"hello\"\n" );
         uint32_t dataLen = data.GetLength();
-        CIncludeParser parser;
+        CIncludeParser parser(AString{});
         TEST_ASSERT( parser.ParseGCC_Preprocessed( data.Get(), dataLen ) );
         TEST_ASSERT( parser.GetIncludes().GetSize() == 0 );
         #ifdef DEBUG
@@ -431,7 +431,7 @@ void TestIncludeParser::TestEdgeCases() const
     {
         AStackString<> data( "#line 15 \"hello\"\n#line 2 \"hello\"" );
         uint32_t dataLen = data.GetLength();
-        CIncludeParser parser;
+        CIncludeParser parser(AString{});
         TEST_ASSERT( parser.ParseGCC_Preprocessed( data.Get(), dataLen ) );
         TEST_ASSERT( parser.GetIncludes().GetSize() == 1 );
         #ifdef DEBUG
@@ -458,7 +458,7 @@ void TestIncludeParser::ClangLineEndings() const
 
     FBuild fb; // needed for CleanPath
 
-    CIncludeParser parser;
+    CIncludeParser parser(AString{});
     TEST_ASSERT( parser.ParseGCC_Preprocessed( preprocessedData, AString::StrLen( preprocessedData ) ) );
 
     // check number of includes found to prevent future regressions

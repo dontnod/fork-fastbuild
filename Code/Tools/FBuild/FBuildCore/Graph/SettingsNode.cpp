@@ -35,6 +35,7 @@ REFLECT_NODE_BEGIN( SettingsNode, Node, MetaNone() )
     REFLECT(        m_WorkerConnectionLimit,    "WorkerConnectionLimit",    MetaOptional() )
     REFLECT(        m_DistributableJobMemoryLimitMiB, "DistributableJobMemoryLimitMiB", MetaOptional() + MetaRange( DIST_MEMORY_LIMIT_MIN, DIST_MEMORY_LIMIT_MAX ) )
     REFLECT(        m_DisableDBMigration,       "DisableDBMigration",       MetaOptional() )
+    REFLECT(        m_RootPath,                 "RootPath",                MetaOptional() )
 REFLECT_END( SettingsNode )
 
 // CONSTRUCTOR
@@ -109,6 +110,13 @@ const AString & SettingsNode::GetCachePathMountPoint() const
 const AString & SettingsNode::GetCachePluginDLL() const
 {
     return m_CachePluginDLL;
+}
+
+// GetRootPath
+//------------------------------------------------------------------------------
+const AString& SettingsNode::GetRootPath() const
+{
+    return m_RootPath;
 }
 
 // GetCachePluginDLLConfig

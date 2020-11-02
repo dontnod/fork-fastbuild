@@ -110,7 +110,7 @@ private:
     BuildResult DoBuild_QtRCC( Job * job );
     BuildResult DoBuildOther( Job * job, bool useDeoptimization );
 
-    bool ProcessIncludesMSCL( const char * output, uint32_t outputSize );
+    bool ProcessIncludesMSCL( Job * job, const char * output, uint32_t outputSize );
     bool ProcessIncludesWithPreProcessor( Job * job );
 
     const AString & GetCacheName( Job * job ) const;
