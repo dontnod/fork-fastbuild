@@ -370,11 +370,15 @@ Job * JobQueue::GetDistributableJobToProcess( bool remote , bool canBuildSecondP
         }
     }
 
-    ASSERT( job->GetDistributionState() == Job::DIST_AVAILABLE );
+    if ( job != nullptr )
+    {
+        ASSERT( job->GetDistributionState() == Job::DIST_AVAILABLE );
 
-    // Tag job as in-use
-    job->SetDistributionState( remote ? Job::DIST_BUILDING_REMOTELY : Job::DIST_BUILDING_LOCALLY );
-    m_DistributableJobs_InProgress.Append( job );
+        // Tag job as in-use
+        job->SetDistributionState( remote ? Job::DIST_BUILDING_REMOTELY : Job::DIST_BUILDING_LOCALLY );
+        m_DistributableJobs_InProgress.Append( job );
+    }
+
     return job;
 }
 
