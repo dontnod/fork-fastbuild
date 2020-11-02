@@ -29,6 +29,9 @@ public:
     bool HasExited() const;
     void WaitForStop();
 
+    void SetCanBuildSecondPass( bool canBuildSecondPass ) { m_CanBuildSecondPass = canBuildSecondPass; }
+    bool CanBuildSecondPass() const { return m_CanBuildSecondPass; }
+
     static uint32_t GetThreadIndex();
 
     static void GetTempFileDirectory( AString & tmpFileDirectory );
@@ -41,11 +44,13 @@ public:
 protected:
     // allow update from the main thread when in -j0 mode
     friend class FBuild;
-    static bool Update();
+    static bool Update( const bool canBuildSecondPass = true );
 
     // worker thread main loop
     static uint32_t ThreadWrapperFunc( void * param );
     virtual void Main();
+
+    bool m_CanBuildSecondPass = true;
 
     // signal to exit thread
     volatile bool m_ShouldExit;

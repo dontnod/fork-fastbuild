@@ -256,6 +256,47 @@ void JobQueue::FlushJobBatch()
     m_LocalJobs_Staging.Clear();
 }
 
+// QueueLocalJob
+//------------------------------------------------------------------------------
+void JobQueue::QueueLocalJobToBuildSecondPass( Job* job )
+{
+    ASSERT( job->GetNode()->GetState() == Node::BUILDING );
+    ASSERT( job->GetDistributionState() == Job::DIST_NONE );
+
+    {
+        MutexHolder m( m_LocalJobsMutex_BuildSecondPass );
+
+        m_LocalJobs_BuildSecondPass.Append( job );
+    }
+
+    ASSERT( m_NumLocalJobsActive > 0 );
+    AtomicDecU32( &m_NumLocalJobsActive ); // job converts from active to pending remote
+
+    m_WorkerThreadSemaphore.Signal();
+}
+
+// GetLocalJobToBuild
+//------------------------------------------------------------------------------
+Job* JobQueue::GetLocalJobToBuildSecondPass( )
+{
+    MutexHolder m( m_LocalJobsMutex_BuildSecondPass );
+
+    if ( m_LocalJobs_BuildSecondPass.IsEmpty() )
+    {
+        return nullptr;
+    }
+
+    // building jobs in the order they are queued
+    Job* job = m_LocalJobs_BuildSecondPass[ 0 ];
+    m_LocalJobs_BuildSecondPass.PopFront();
+
+    ASSERT( job->GetDistributionState() == Job::DIST_NONE );
+
+    AtomicIncU32( &m_NumLocalJobsActive );
+
+    return job;
+}
+
 // QueueDistributableJob
 //------------------------------------------------------------------------------
 void JobQueue::QueueDistributableJob( Job * job )
@@ -279,7 +320,7 @@ void JobQueue::QueueDistributableJob( Job * job )
 
 // GetDistributableJobToProcess
 //------------------------------------------------------------------------------
-Job * JobQueue::GetDistributableJobToProcess( bool remote )
+Job * JobQueue::GetDistributableJobToProcess( bool remote , bool canBuildSecondPass )
 {
     MutexHolder m( m_DistributedJobsMutex );
 
@@ -288,21 +329,44 @@ Job * JobQueue::GetDistributableJobToProcess( bool remote )
         return nullptr;
     }
 
-    // building jobs in the order they are queued
-    Job * job = m_DistributableJobs_Available[ 0 ];
-    m_DistributableJobs_Available.PopFront();
+    Job* job = nullptr;
 
-    ASSERT( job->GetDistributionState() == Job::DIST_AVAILABLE );
+    if ( canBuildSecondPass )
+    {
+        // building jobs in the order they are queued
+        job = m_DistributableJobs_Available[ 0 ];
+        m_DistributableJobs_Available.PopFront();
+    }
+    else
+    {
+        // building job that does not support a second pass
+        for ( size_t jobIndex = 0; jobIndex < m_DistributableJobs_Available.GetSize() ; ++jobIndex )
+        {
+            Job* distributableJob = m_DistributableJobs_Available[ jobIndex ];
+            if ( distributableJob->GetNode()->SupportsSecondBuildPass() == false )
+            {
+                job = distributableJob;
+                m_DistributableJobs_Available.EraseIndex( jobIndex );
+                break;
+            }
+        }
+    }
 
-    // Tag job as in-use
-    job->SetDistributionState( remote ? Job::DIST_BUILDING_REMOTELY : Job::DIST_BUILDING_LOCALLY );
-    m_DistributableJobs_InProgress.Append( job );
+    if ( job != nullptr )
+    {
+        ASSERT( job->GetDistributionState() == Job::DIST_AVAILABLE );
+
+        // Tag job as in-use
+        job->SetDistributionState( remote ? Job::DIST_BUILDING_REMOTELY : Job::DIST_BUILDING_LOCALLY );
+        m_DistributableJobs_InProgress.Append( job );
+    }
+
     return job;
 }
 
 // GetDistributableJobToRace
 //------------------------------------------------------------------------------
-Job * JobQueue::GetDistributableJobToRace()
+Job * JobQueue::GetDistributableJobToRace( bool canBuildSecondPass )
 {
     MutexHolder m( m_DistributedJobsMutex );
     if ( m_DistributableJobs_InProgress.IsEmpty() )
@@ -319,7 +383,7 @@ Job * JobQueue::GetDistributableJobToRace()
 
         // Don't Race jobs already building locally
         const Job::DistributionState distState = job->GetDistributionState();
-        if ( distState == Job::DIST_BUILDING_REMOTELY )
+        if ( distState == Job::DIST_BUILDING_REMOTELY && ( canBuildSecondPass || job->GetNode()->SupportsSecondBuildPass() == false ) )
         {
             job->SetDistributionState( Job::DIST_RACING );
             return job;
@@ -723,6 +787,10 @@ void JobQueue::FinishedProcessingJob( Job * job, bool success, bool wasARemoteJo
     {
         node->SetStatFlag( Node::STATS_FAILED );
     }
+    else if ( result == Node::NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS )
+    {
+        // nothing to check
+    }
     else if ( result == Node::NODE_RESULT_NEED_SECOND_BUILD_PASS )
     {
         // nothing to check
@@ -757,6 +825,7 @@ void JobQueue::FinishedProcessingJob( Job * job, bool success, bool wasARemoteJo
         switch ( result )
         {
             case Node::NODE_RESULT_OK:                      resultString = "SUCCESS_COMPLETE";      break;
+            case Node::NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS:  resultString = "SUCCESS_PREPROCESSED";  break;
             case Node::NODE_RESULT_NEED_SECOND_BUILD_PASS:  resultString = "SUCCESS_PREPROCESSED";  break;
             case Node::NODE_RESULT_OK_CACHE:                resultString = "SUCCESS_CACHED";        break;
             case Node::NODE_RESULT_FAILED:                  resultString = "FAILED";                break;
