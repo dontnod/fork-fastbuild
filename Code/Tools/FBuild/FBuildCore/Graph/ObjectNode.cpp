@@ -238,6 +238,11 @@ ObjectNode::~ObjectNode()
         return DoBuild_QtRCC( job );
     }
 
+    if ( GetFlag( FLAG_ISPC ) )
+    {
+        return DoBuild_ISPC( job, useDeoptimization );
+    }
+
     return DoBuildOther( job, useDeoptimization );
 }
 
@@ -553,6 +558,12 @@ Node::BuildResult ObjectNode::DoBuildWithPreProcessor2( Job * job, bool useDeopt
             usePreProcessedOutput = false;
         }
 
+        // FIXME (MHO) : should ISPC support use of pre processed output ?
+        if ( GetFlag( FLAG_ISPC ) )
+        {
+            usePreProcessedOutput = false;
+        }
+
         // We might not have preprocessed data if using the LightCache
         if ( job->GetData() == nullptr )
         {
@@ -708,6 +719,25 @@ Node::BuildResult ObjectNode::DoBuild_QtRCC( Job * job )
 
 // DoBuildOther
 //------------------------------------------------------------------------------
+Node::BuildResult ObjectNode::DoBuild_ISPC( Job* job, bool useDeoptimization )
+{
+    //TODO (MHO) - handle adding -MMM compiler option to command line with a temporary file if option was not already passed or parse the already specified dependency file path
+    //TODO (MHO) - possibly introduce a specific DoBuildISPC() with more compiler specific flag detection ... etc
+
+    const Node::BuildResult buildResult = DoBuildOther( job, useDeoptimization );
+
+    const AString dependencyFile;
+    if ( buildResult != Node::NODE_RESULT_FAILED && ProcessIncludesISPC( dependencyFile ) == false )
+    {
+        return NODE_RESULT_FAILED; // ProcessIncludesISPC will have emitted an error
+    }
+
+    return buildResult;
+
+}
+
+// DoBuildOther
+//------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult ObjectNode::DoBuildOther( Job * job, bool useDeoptimization )
 {
     // Format compiler args string
@@ -760,6 +790,18 @@ bool ObjectNode::ProcessIncludesMSCL( const char * output, uint32_t outputSize )
     }
 
     FLOG_VERBOSE( "Process Includes:\n - File: %s\n - Time: %u ms\n - Num : %u", m_Name.Get(), uint32_t( t.GetElapsedMS() ), uint32_t( m_Includes.GetSize() ) );
+
+    return true;
+}
+
+// ProcessIncludesISPC
+//------------------------------------------------------------------------------
+bool ObjectNode::ProcessIncludesISPC( const AString& dependencyFile )
+{
+    if ( dependencyFile.IsEmpty() == false )
+    {
+        // TODO (MHO) - parse dependency file generated using -MMM compiler option
+    }
 
     return true;
 }
@@ -870,6 +912,7 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
         case CompilerNode::CompilerFamily::VBCC:            flags |= FLAG_VBCC;             break;
         case CompilerNode::CompilerFamily::ORBIS_WAVE_PSSLC:flags |= FLAG_ORBIS_WAVE_PSSLC; break;
         case CompilerNode::CompilerFamily::CSHARP:          ASSERT( false );                break; // Guarded in ObjectListNode::Initialize
+        case CompilerNode::CompilerFamily::ISPC:            flags |= FLAG_ISPC;             break;
     }
 
     // Check MS compiler options
@@ -1027,6 +1070,14 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
 
         // Can cache objects
         flags |= ObjectNode::FLAG_CAN_BE_CACHED;
+    }
+
+    // ISPC
+    if ( flags & ObjectNode::FLAG_ISPC )
+    {
+        // Can cache objects
+        flags |= ObjectNode::FLAG_CAN_BE_CACHED;
+        //TODO (MHO) - see what is required for ispc job to be distributed
     }
 
     return flags;
@@ -1636,6 +1687,7 @@ bool ObjectNode::BuildArgs( const Job * job, Args & fullArgs, Pass pass, bool us
     const bool isQtRCC          = ( useDedicatedPreprocessor ) ? GetPreprocessorFlag( FLAG_QT_RCC ) : GetFlag( FLAG_QT_RCC );
     const bool isVBCC           = ( useDedicatedPreprocessor ) ? GetPreprocessorFlag( FLAG_VBCC ) : GetFlag( FLAG_VBCC );
     const bool isOrbisWavePsslc = ( useDedicatedPreprocessor ) ? GetPreprocessorFlag( FLAG_ORBIS_WAVE_PSSLC) : GetFlag(FLAG_ORBIS_WAVE_PSSLC);
+    const bool isISPC           = ( useDedicatedPreprocessor ) ? GetPreprocessorFlag( FLAG_ISPC ) : GetFlag( FLAG_ISPC );
 
     const bool forceColoredDiagnostics = ( ( useDedicatedPreprocessor ) ? GetPreprocessorFlag( FLAG_DIAGNOSTICS_COLOR_AUTO ) : GetFlag( FLAG_DIAGNOSTICS_COLOR_AUTO ) ) && ( Env::IsStdOutRedirected() == false );
 
@@ -1988,6 +2040,10 @@ bool ObjectNode::BuildArgs( const Job * job, Args & fullArgs, Pass pass, bool us
         else if ( isQtRCC )
         {
             fullArgs += " --list"; // List used resources
+        }
+        else if ( isISPC )
+        {
+            // TODO (MHO) - not sure if some things need to be handled here
         }
         else
         {

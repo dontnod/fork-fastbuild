@@ -270,6 +270,14 @@ bool CompilerNode::InitializeCompilerFamily( const BFFToken * iter, const Functi
             return true;
         }
 
+        // ISPC compiler
+        if ( compiler.EndsWithI( "ispc.exe" ) ||
+            compiler.EndsWithI( "ispc" ) )
+        {
+            m_CompilerFamilyEnum = ISPC;
+            return true;
+        }
+
         // Auto-detect failed
         Error::Error_1500_CompilerDetectionFailed( iter, function, compiler );
         return false;
@@ -334,6 +342,11 @@ bool CompilerNode::InitializeCompilerFamily( const BFFToken * iter, const Functi
     if ( m_CompilerFamilyString.EqualsI( "csharp" ) )
     {
         m_CompilerFamilyEnum = CSHARP;
+        return true;
+    }
+    if ( m_CompilerFamilyString.EqualsI( "ispc" ) )
+    {
+        m_CompilerFamilyEnum = ISPC;
         return true;
     }
 

@@ -63,6 +63,7 @@ public:
         FLAG_ORBIS_WAVE_PSSLC   =   0x400000,
         FLAG_DIAGNOSTICS_COLOR_AUTO = 0x800000,
         FLAG_WARNINGS_AS_ERRORS_CLANGGCC = 0x1000000,
+        FLAG_ISPC               = 0x2000000,
     };
     static uint32_t DetermineFlags( const CompilerNode * compilerNode,
                                     const AString & args,
@@ -108,9 +109,11 @@ private:
     BuildResult DoBuildWithPreProcessor( Job * job, bool useDeoptimization, bool useCache, bool useSimpleDist );
     BuildResult DoBuildWithPreProcessor2( Job * job, bool useDeoptimization, bool stealingRemoteJob, bool racingRemoteJob );
     BuildResult DoBuild_QtRCC( Job * job );
+    BuildResult DoBuild_ISPC( Job* job, bool useDeoptimization );
     BuildResult DoBuildOther( Job * job, bool useDeoptimization );
 
     bool ProcessIncludesMSCL( const char * output, uint32_t outputSize );
+    bool ProcessIncludesISPC( const AString& dependencyFile );
     bool ProcessIncludesWithPreProcessor( Job * job );
 
     const AString & GetCacheName( Job * job ) const;
