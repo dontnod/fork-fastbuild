@@ -67,6 +67,7 @@ public:
         bool IsDiagnosticsColorAuto() const         { return ( ( m_Flags & FLAG_DIAGNOSTICS_COLOR_AUTO ) != 0 ); }
         bool IsWarningsAsErrorsClangGCC() const     { return ( ( m_Flags & FLAG_WARNINGS_AS_ERRORS_CLANGGCC ) != 0 ); }
         bool IsClangCl() const                      { return ( ( m_Flags & FLAG_CLANG_CL ) != 0 ); }
+        bool IsISPC() const                         { return ( ( m_Flags & FLAG_ISPC ) != 0 ); }
 
         enum Flag : uint32_t
         {
@@ -94,6 +95,7 @@ public:
             FLAG_DIAGNOSTICS_COLOR_AUTO         = 0x800000,
             FLAG_WARNINGS_AS_ERRORS_CLANGGCC    = 0x1000000,
             FLAG_CLANG_CL                       = 0x2000000,
+            FLAG_ISPC                           = 0x4000000,
         };
 
         void Set( Flag flag )       { m_Flags |= flag; }
@@ -133,6 +135,7 @@ public:
     bool IsUsingStaticAnalysisMSVC() const  { return m_CompilerFlags.IsUsingStaticAnalysisMSVC(); }
     bool IsOrbisWavePSSLC() const           { return m_CompilerFlags.IsOrbisWavePSSLC(); }
     bool IsWarningsAsErrorsClangGCC() const { return m_CompilerFlags.IsWarningsAsErrorsClangGCC(); }
+    bool IsISPC() const                     { return m_CompilerFlags.IsISPC(); }
 
     virtual void SaveRemote( IOStream & stream ) const override;
     static Node * LoadRemote( IOStream & stream );
@@ -170,9 +173,11 @@ private:
                                           bool racingRemoteJob,
                                           bool isFollowingLightCacheMiss );
     BuildResult DoBuild_QtRCC( Job * job );
+    BuildResult DoBuild_ISPC( Job* job, bool useDeoptimization );
     BuildResult DoBuildOther( Job * job, bool useDeoptimization );
 
     bool ProcessIncludesMSCL( const char * output, uint32_t outputSize );
+    bool ProcessIncludesISPC( const AString& dependencyFile );
     bool ProcessIncludesWithPreProcessor( Job * job );
 
     const AString & GetCacheName( Job * job ) const;
