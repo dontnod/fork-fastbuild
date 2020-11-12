@@ -65,6 +65,7 @@ public:
         FLAG_DIAGNOSTICS_COLOR_AUTO = 0x800000,
         FLAG_WARNINGS_AS_ERRORS_CLANGGCC = 0x1000000,
         FLAG_CLANG_CL           = 0x2000000,
+        FLAG_ISPC               = 0x4000000,
     };
     static uint32_t DetermineFlags( const CompilerNode * compilerNode,
                                     const AString & args,
@@ -115,9 +116,11 @@ private:
                                           bool racingRemoteJob,
                                           bool isFollowingLightCacheMiss );
     BuildResult DoBuild_QtRCC( Job * job );
+    BuildResult DoBuild_ISPC( Job* job, bool useDeoptimization );
     BuildResult DoBuildOther( Job * job, bool useDeoptimization );
 
     bool ProcessIncludesMSCL( const char * output, uint32_t outputSize );
+    bool ProcessIncludesISPC( const AString& dependencyFile );
     bool ProcessIncludesWithPreProcessor( Job * job );
 
     const AString & GetCacheName( Job * job ) const;
