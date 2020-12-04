@@ -355,6 +355,11 @@ void Server::Process( const ConnectionInfo * connection, const Protocol::MsgJob 
     Job * job = FNEW( Job( ms ) );
     job->SetUserData( cs );
 
+    if ( m_SpawnCompilerWithDebugger )
+    {
+        job->SetSpawnCompilerWithDebugger();
+    }
+
     //
     const uint64_t toolId = msg->GetToolId();
     ASSERT( toolId );
