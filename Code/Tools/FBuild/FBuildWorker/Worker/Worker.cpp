@@ -58,6 +58,17 @@ Worker::Worker( const AString & args, bool consoleMode )
     m_NetworkStartupHelper = FNEW( NetworkStartupHelper );
     m_ConnectionPool = FNEW( Server );
 
+    Array< AString > tokens;
+    args.Tokenize( tokens );
+
+    for ( const AString& token : tokens )
+    {
+        if ( token.Equals( "-spawncompilerwithdebugger" ) )
+        {
+            m_ConnectionPool->SetSpawnCompilerWithDebugger( true );
+        }
+    }
+
     Env::GetExePath( m_BaseExeName );
     #if defined( __WINDOWS__ )
         if ( m_BaseExeName.Replace( ".copy", "" ) != 1 )

@@ -35,6 +35,8 @@ public:
 
     bool IsSynchingTool( AString & statusStr ) const;
 
+    void SetSpawnCompilerWithDebugger( bool SpawnCompilerWithDebugger ) { m_SpawnCompilerWithDebugger = SpawnCompilerWithDebugger; }
+
 private:
     // TCPConnection interface
     virtual void OnConnected( const ConnectionInfo * connection );
@@ -89,6 +91,8 @@ private:
 
     mutable Mutex           m_ToolManifestsMutex;
     Array< ToolManifest * > m_Tools;
+
+    bool                    m_SpawnCompilerWithDebugger = false;
     
     #if defined( __OSX__ ) || ( __LINUX__ )
         Timer                   m_TouchToolchainTimer;
