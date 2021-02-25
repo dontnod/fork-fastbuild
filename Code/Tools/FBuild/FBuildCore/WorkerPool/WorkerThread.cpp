@@ -157,7 +157,7 @@ void WorkerThread::WaitForStop()
             continue;
         }
 
-        Update();
+        Update( CanBuildSecondPass() );
     }
 
     AtomicStoreRelaxed( &m_Exited, true );
@@ -173,8 +173,33 @@ void WorkerThread::WaitForStop()
 
 // Update
 //------------------------------------------------------------------------------
-/*static*/ bool WorkerThread::Update()
+/*static*/ bool WorkerThread::Update( const bool canBuildSecondPass )
 {
+    // try to find some local job to build second pass
+    if ( canBuildSecondPass )
+    {
+        Job* job = JobQueue::IsValid() ? JobQueue::Get().GetLocalJobToBuildSecondPass() : nullptr;
+        if ( job != nullptr )
+        {
+            // make sure state is as expected
+            ASSERT( job->GetNode()->GetState() == Node::BUILDING );
+            ASSERT( job->GetNode()->SupportsSecondBuildPass() );
+            ASSERT( job->IsLocal() );
+
+            // process the work
+            Node::BuildResult result = JobQueueRemote::DoBuild( job, false ); // which calls Node::DoBuild2() instead of Node::DoBuild()
+
+            if ( result == Node::NODE_RESULT_FAILED )
+            {
+                FBuild::OnBuildError();
+            }
+
+            JobQueue::Get().FinishedProcessingJob( job, (result != Node::NODE_RESULT_FAILED), false ); // returning a local job
+
+            return true; // did some work
+        }
+    }
+
     // try to find some work to do
     Job * job = JobQueue::IsValid() ? JobQueue::Get().GetJobToProcess() : nullptr;
     if ( job != nullptr )
@@ -182,8 +207,13 @@ void WorkerThread::WaitForStop()
         // make sure state is as expected
         ASSERT( job->GetNode()->GetState() == Node::BUILDING );
 
+        ASSERT( job->ShouldTryPostponeLocalBuildToSecondPass() == false );
+        job->SetTryPostponeLocalBuildToSecondPass( !canBuildSecondPass );
+
         // process the work
         Node::BuildResult result = JobQueue::DoBuild( job );
+
+        job->SetTryPostponeLocalBuildToSecondPass( false );
 
         if ( result == Node::NODE_RESULT_FAILED )
         {
@@ -194,6 +224,10 @@ void WorkerThread::WaitForStop()
         {
             // Only distributable jobs have two passes, and the 2nd pass is always distributable
             JobQueue::Get().QueueDistributableJob( job );
+        }
+        else if ( result == Node::NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS )
+        {
+            JobQueue::Get().QueueLocalJobToBuildSecondPass( job );
         }
         else
         {
@@ -206,7 +240,7 @@ void WorkerThread::WaitForStop()
     // no local job, see if we can do one from the remote queue
     if ( FBuild::Get().GetOptions().m_NoLocalConsumptionOfRemoteJobs == false )
     {
-        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToProcess( false ) : nullptr;
+        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToProcess( false, canBuildSecondPass ) : nullptr;
         if ( job != nullptr )
         {
             // process the work
@@ -226,7 +260,7 @@ void WorkerThread::WaitForStop()
     // race remote jobs
     if ( FBuild::Get().GetOptions().m_AllowLocalRace )
     {
-        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToRace() : nullptr;
+        job = JobQueue::IsValid() ? JobQueue::Get().GetDistributableJobToRace( canBuildSecondPass ) : nullptr;
         if ( job != nullptr )
         {
             // process the work

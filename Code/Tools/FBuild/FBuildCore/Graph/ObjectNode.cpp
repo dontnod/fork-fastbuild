@@ -433,6 +433,12 @@ Node::BuildResult ObjectNode::DoBuildWithPreProcessor( Job * job, bool useDeopti
             const bool canDistribute = belowMemoryLimit && GetFlag( FLAG_CAN_BE_DISTRIBUTED ) && m_AllowDistribution && FBuild::Get().GetOptions().m_AllowDistributed;
             if ( canDistribute == false )
             {
+                const bool shouldPostponeBuildToSecondPass = job->ShouldTryPostponeLocalBuildToSecondPass();
+                if ( shouldPostponeBuildToSecondPass )
+                {
+                    return NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS;
+                }
+
                 // can't distribute, so generating preprocessed output is useless
                 // so we directly compile from source as one-pass compilation is faster
                 const bool stealingRemoteJob = false; // never queued
@@ -499,6 +505,12 @@ Node::BuildResult ObjectNode::DoBuildWithPreProcessor( Job * job, bool useDeopti
 
         // yes... re-queue for secondary build
         return NODE_RESULT_NEED_SECOND_BUILD_PASS;
+    }
+
+    const bool shouldPostponeBuildToSecondPass = job->ShouldTryPostponeLocalBuildToSecondPass();
+    if ( shouldPostponeBuildToSecondPass )
+    {
+        return NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS;
     }
 
     // can't do the work remotely, so do it right now

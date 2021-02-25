@@ -419,7 +419,7 @@ void Client::Process( const ConnectionInfo * connection, const Protocol::MsgRequ
         return;
     }
 
-    Job * job = JobQueue::Get().GetDistributableJobToProcess( true );
+    Job * job = JobQueue::Get().GetDistributableJobToProcess( true, true );
     if ( job == nullptr )
     {
         PROFILE_SECTION( "NoJob" );
