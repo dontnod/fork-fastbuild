@@ -92,6 +92,9 @@ public:
     inline void                 SetDistributionState( DistributionState state ) { m_DistributionState = state; }
     inline DistributionState    GetDistributionState() const                    { return m_DistributionState; }
 
+    void SetSpawnCompilerWithDebugger() { m_SpawnCompilerWithDebugger = true; }
+    bool ShouldSpawnCompilerWithDebugger() { return m_SpawnCompilerWithDebugger; }
+
     // Access total memory usage by job data
     static uint64_t             GetTotalLocalDataMemoryUsage();
 
@@ -107,6 +110,7 @@ private:
     volatile bool       m_Abort             = false;
     bool                m_DataIsCompressed  = false;
     bool                m_IsLocal           = true;
+    bool                m_SpawnCompilerWithDebugger = false;
     uint8_t             m_SystemErrorCount  = 0; // On client, the total error count, on the worker a flag for the current attempt
     DistributionState   m_DistributionState = DIST_NONE;
     uint16_t            m_RemoteThreadIndex = 0; // On server, the thread index used to build
