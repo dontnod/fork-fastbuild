@@ -95,6 +95,9 @@ public:
     void SetSpawnCompilerWithDebugger() { m_SpawnCompilerWithDebugger = true; }
     bool ShouldSpawnCompilerWithDebugger() { return m_SpawnCompilerWithDebugger; }
 
+    void SetTryPostponeLocalBuildToSecondPass( bool postponeBuildToSecondPass ) { m_TryPostponeBuildToSecondPass = postponeBuildToSecondPass; }
+    bool ShouldTryPostponeLocalBuildToSecondPass() const { return m_TryPostponeBuildToSecondPass; }
+
     // Access total memory usage by job data
     static uint64_t             GetTotalLocalDataMemoryUsage();
 
@@ -111,6 +114,7 @@ private:
     bool                m_DataIsCompressed  = false;
     bool                m_IsLocal           = true;
     bool                m_SpawnCompilerWithDebugger = false;
+    bool                m_TryPostponeBuildToSecondPass = false;
     uint8_t             m_SystemErrorCount  = 0; // On client, the total error count, on the worker a flag for the current attempt
     DistributionState   m_DistributionState = DIST_NONE;
     uint16_t            m_RemoteThreadIndex = 0; // On server, the thread index used to build

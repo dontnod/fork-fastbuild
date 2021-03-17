@@ -44,7 +44,7 @@ private:
 class JobQueue : public Singleton< JobQueue >
 {
 public:
-    explicit JobQueue( uint32_t numWorkerThreads );
+    explicit JobQueue( uint32_t numWorkerThreads , uint32_t numWorkerThreadsToBuildSecondPass );
     ~JobQueue();
 
     // main thread calls these
@@ -71,15 +71,17 @@ private:
     friend class WorkerThread;
     void        WorkerThreadWait( uint32_t maxWaitMS );
     Job *       GetJobToProcess();
-    Job *       GetDistributableJobToRace();
+    Job*        GetLocalJobToBuildSecondPass();
+    Job *       GetDistributableJobToRace( bool canBuildSecondPass );
     static Node::BuildResult DoBuild( Job * job );
     void        FinishedProcessingJob( Job * job, bool result, bool wasARemoteJob );
 
+    void        QueueLocalJobToBuildSecondPass( Job* job );
     void        QueueDistributableJob( Job * job );
 
     // client side of protocol consumes jobs via this interface
     friend class Client;
-    Job *       GetDistributableJobToProcess( bool remote );
+    Job *       GetDistributableJobToProcess( bool remote , bool canBuildSecondPass );
     Job *       OnReturnRemoteJob( uint32_t jobId );
     void        ReturnUnfinishedDistributableJob( Job * job );
 
@@ -89,6 +91,10 @@ private:
     // Jobs available for local processing
     Array< Node * >     m_LocalJobs_Staging;
     JobSubQueue         m_LocalJobs_Available;
+
+    // Jobs available for local processing, build second pass only
+    mutable Mutex       m_LocalJobsMutex_BuildSecondPass;
+    Array< Job* >       m_LocalJobs_BuildSecondPass;  // Available, not in progress anywhere
 
     // Jobs in progress locally
     uint32_t            m_NumLocalJobsActive;
