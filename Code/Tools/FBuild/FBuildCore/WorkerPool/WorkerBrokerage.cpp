@@ -374,7 +374,12 @@ void WorkerBrokerage::UpdateBrokerageFilePath()
 {
     if ( !m_BrokerageRoots.IsEmpty() )
     {
-        if ( !m_IPAddress.IsEmpty() )
+        AString workerID;
+        if (Env::GetEnvVariable("FASTBUILD_WORKER_ID", workerID))
+        {
+            m_BrokerageFilePath.Format( "%s%s", m_BrokerageRoots[0].Get(), workerID.Get() );
+        }
+        else if ( !m_IPAddress.IsEmpty() )
         {
             m_BrokerageFilePath.Format( "%s%s", m_BrokerageRoots[0].Get(), m_IPAddress.Get() );
         }
