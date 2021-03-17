@@ -12,6 +12,8 @@
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectListNode.h"
+#include "Tools/FBuild/FBuildCore/WorkerPool/Job.h"
+#include "Tools/FBuild/FBuildCore/Helpers/ToolManifest.h"
 
 // Core
 #include "Core/Containers/UniquePtr.h"
@@ -272,7 +274,7 @@ UnityNode::~UnityNode()
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult UnityNode::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult UnityNode::DoBuild( Job * job )
 {
     // Emit build summary message
     if ( FBuild::Get().GetOptions().m_ShowCommandSummary )
@@ -331,6 +333,11 @@ UnityNode::~UnityNode()
     output.SetReserved( 32 * 1024 );
 
     Array< uint64_t > stamps( m_NumUnityFilesToCreate, false );
+
+    // PQU: local jobs use FBuild singleton, but remote jobs use serialized payload sent to the worker
+    const AString& rootPath = (job->IsLocal()
+        ? FBuild::Get().GetRootPath()
+        : job->GetToolManifest()->GetRemoteBffRootPath());
 
     // Includes will be relative to root
     AStackString<> includeBasePath;
@@ -496,7 +503,7 @@ UnityNode::~UnityNode()
             m_UnityFileNames.Append( unityName );
         }
 
-        stamps.Append( xxHash::Calc64( output.Get(), output.GetLength() ) );
+        stamps.Append( FBuild::Hash64( rootPath, output.Get(), output.GetLength() ) );
 
         // need to write the unity file?
         bool needToWrite = false;
@@ -566,7 +573,8 @@ UnityNode::~UnityNode()
 
     // Calculate final hash to represent generation of Unity files
     ASSERT( stamps.GetSize() == m_NumUnityFilesToCreate );
-    m_Stamp = xxHash::Calc64( &stamps[ 0 ], stamps.GetSize() * sizeof( uint64_t ) );
+
+    m_Stamp = FBuild::Hash64(rootPath, &stamps[ 0 ], stamps.GetSize() * sizeof( uint64_t ) );
 
     // cleanup extra FileInfo structures
     for ( FileIO::FileInfo * info : m_FilesInfo )
