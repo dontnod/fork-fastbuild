@@ -18,6 +18,7 @@ public:
 
     virtual bool Init( const AString & cachePath,
                        const AString & cachePathMountPoint,
+                       const AString & localMirrorPath,
                        bool cacheRead,
                        bool cacheWrite,
                        bool cacheVerbose,
@@ -31,8 +32,11 @@ public:
 private:
     void GetCacheFiles( bool showProgress, Array< FileIO::FileInfo > & outInfo, uint64_t & outTotalSize ) const;
     void GetFullPathForCacheEntry( const AString & cacheId, AString & outFullPath ) const;
+    void GetFullPathForMirrorEntry( const AString & cacheId, AString & outFullPath ) const;
+    bool PublishFullPath( const AString & fullPath, const void * data, size_t dataSize ) const;
 
     AString m_CachePath;
+    AString m_LocalMirrorPath;
 };
 
 //------------------------------------------------------------------------------

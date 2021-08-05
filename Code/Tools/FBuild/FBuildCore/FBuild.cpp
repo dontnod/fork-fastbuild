@@ -196,6 +196,7 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
 
         if ( m_Cache->Init( settings->GetCachePath(),
                             settings->GetCachePathMountPoint(),
+                            settings->GetLocalMirrorPath(),
                             m_Options.m_UseCacheRead,
                             m_Options.m_UseCacheWrite,
                             m_Options.m_CacheVerbose,
