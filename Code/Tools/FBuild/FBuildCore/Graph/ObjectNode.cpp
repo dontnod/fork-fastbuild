@@ -255,6 +255,11 @@ ObjectNode::~ObjectNode()
         return DoBuild_QtRCC( job );
     }
 
+    if ( IsISPC() )
+    {
+        return DoBuild_ISPC( job, useDeoptimization );
+    }
+
     return DoBuildOther( job, useDeoptimization );
 }
 
@@ -604,6 +609,12 @@ Node::BuildResult ObjectNode::DoBuildWithPreProcessor2( Job * job, bool useDeopt
             usePreProcessedOutput = false;
         }
 
+        // FIXME (MHO) : should ISPC support use of pre processed output ?
+        if ( IsISPC() )
+        {
+            usePreProcessedOutput = false;
+        }
+
         // We might not have preprocessed data if using the LightCache
         if ( job->GetData() == nullptr )
         {
@@ -766,6 +777,25 @@ Node::BuildResult ObjectNode::DoBuild_QtRCC( Job * job )
 
 // DoBuildOther
 //------------------------------------------------------------------------------
+Node::BuildResult ObjectNode::DoBuild_ISPC( Job* job, bool useDeoptimization )
+{
+    //TODO (MHO) - handle adding -MMM compiler option to command line with a temporary file if option was not already passed or parse the already specified dependency file path
+    //TODO (MHO) - possibly introduce a specific DoBuildISPC() with more compiler specific flag detection ... etc
+
+    const Node::BuildResult buildResult = DoBuildOther( job, useDeoptimization );
+
+    const AString dependencyFile;
+    if ( buildResult != Node::NODE_RESULT_FAILED && ProcessIncludesISPC( dependencyFile ) == false )
+    {
+        return NODE_RESULT_FAILED; // ProcessIncludesISPC will have emitted an error
+    }
+
+    return buildResult;
+
+}
+
+// DoBuildOther
+//------------------------------------------------------------------------------
 /*virtual*/ Node::BuildResult ObjectNode::DoBuildOther( Job * job, bool useDeoptimization )
 {
     // Format compiler args string
@@ -827,6 +857,18 @@ bool ObjectNode::ProcessIncludesMSCL( Job * job, const char * output, uint32_t o
     }
 
     FLOG_VERBOSE( "Process Includes:\n - File: %s\n - Time: %u ms\n - Num : %u", m_Name.Get(), uint32_t( t.GetElapsedMS() ), uint32_t( m_Includes.GetSize() ) );
+
+    return true;
+}
+
+// ProcessIncludesISPC
+//------------------------------------------------------------------------------
+bool ObjectNode::ProcessIncludesISPC( const AString& dependencyFile )
+{
+    if ( dependencyFile.IsEmpty() == false )
+    {
+        // TODO (MHO) - parse dependency file generated using -MMM compiler option
+    }
 
     return true;
 }
@@ -949,6 +991,7 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
         case CompilerNode::CompilerFamily::VBCC:            flags.Set( CompilerFlags::FLAG_VBCC );              break;
         case CompilerNode::CompilerFamily::ORBIS_WAVE_PSSLC:flags.Set( CompilerFlags::FLAG_ORBIS_WAVE_PSSLC );  break;
         case CompilerNode::CompilerFamily::CSHARP:          ASSERT( false ); break; // Guarded in ObjectListNode::Initialize
+        case CompilerNode::CompilerFamily::ISPC:            flags.Set( CompilerFlags::FLAG_ISPC );              break;
     }
 
     // Source mappings are not currently forwarded so can only compiled locally
@@ -1117,6 +1160,14 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
 
         // Can cache objects
         flags.Set( CompilerFlags::FLAG_CAN_BE_CACHED );
+    }
+
+    // ISPC
+    if ( flags.IsISPC() )
+    {
+        // Can cache objects
+        flags.Set( CompilerFlags::FLAG_CAN_BE_CACHED );
+        //TODO (MHO) - see what is required for ispc job to be distributed
     }
 
     return flags;
