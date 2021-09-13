@@ -29,7 +29,7 @@ class TCPConnectionPool;
 namespace Protocol
 {
     enum : uint16_t { PROTOCOL_PORT = 31264 }; // Arbitrarily chosen port
-    enum { PROTOCOL_VERSION = 22 };
+    enum { PROTOCOL_VERSION = 22+1/* PQU: increments protocol version for path agnostic hash support (see ToolManifest.cpp) */ };
 
     enum { PROTOCOL_TEST_PORT = PROTOCOL_PORT + 1 }; // Different port for use by tests
 
