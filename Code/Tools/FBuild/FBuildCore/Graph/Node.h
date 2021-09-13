@@ -108,6 +108,7 @@ public:
     enum BuildResult
     {
         NODE_RESULT_FAILED      = 0,    // something went wrong building
+        NODE_RESULT_NEED_SECOND_LOCAL_BUILD_PASS, // needs build called again on local worker
         NODE_RESULT_NEED_SECOND_BUILD_PASS, // needs build called again
         NODE_RESULT_OK,                 // built ok
         NODE_RESULT_OK_CACHE            // retrieved from the cache
@@ -137,6 +138,8 @@ public:
 
     // each node must specify if it outputs a file
     virtual bool IsAFile() const = 0;
+
+    virtual bool SupportsSecondBuildPass() const { return false; }
 
     inline State GetState() const { return m_State; }
 

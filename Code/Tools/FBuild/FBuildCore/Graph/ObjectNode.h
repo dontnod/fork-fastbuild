@@ -134,6 +134,8 @@ public:
     bool IsOrbisWavePSSLC() const           { return m_CompilerFlags.IsOrbisWavePSSLC(); }
     bool IsWarningsAsErrorsClangGCC() const { return m_CompilerFlags.IsWarningsAsErrorsClangGCC(); }
 
+    virtual bool SupportsSecondBuildPass() const override { return true; }
+
     virtual void SaveRemote( IOStream & stream ) const override;
     static Node * LoadRemote( IOStream & stream );
 
