@@ -60,6 +60,12 @@ protected:
 
     static Mutex s_TmpRootMutex; // s_TmpRoot is shared by local and remote queues in tests
     static AStackString<> s_TmpRoot;
+
+    static bool IsSystemMemoryStressed();
+
+    static volatile int64_t * GetTotalTimeWithSystemMemoryStressedInternal();
+    static int64_t GetTotalTimeWithSystemMemoryStressed();
+    static int64_t AddTimeWithSystemMemoryStressed( const int64_t additionalTimeWithSystemMemoryStressed );
 };
 
 //------------------------------------------------------------------------------

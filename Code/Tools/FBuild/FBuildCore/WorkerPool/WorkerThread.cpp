@@ -16,6 +16,7 @@
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
 #include "Core/FileIO/PathUtils.h"
+#include "Core/Mem/SystemMemory.h"
 #include "Core/Process/Atomic.h"
 #include "Core/Process/Thread.h"
 #include "Core/Profile/Profile.h"
@@ -143,6 +144,15 @@ void WorkerThread::WaitForStop()
         if ( AtomicLoadRelaxed( &m_ShouldExit ) || FBuild::GetStopBuild() )
         {
             break;
+        }
+
+        if ( IsSystemMemoryStressed() )
+        {
+            const uint32_t waitDuration = FBuild::Get().GetOptions().m_WaitDurationWhenMemoryStressed;
+            FLOG_WARN( "FBuild local worker %d : waiting for %d seconds", this->m_ThreadIndex, waitDuration );
+            JobQueue::Get().WorkerThreadWait( waitDuration * 1000 );
+
+            continue;
         }
 
         Update( CanBuildSecondPass() );
@@ -319,6 +329,90 @@ void WorkerThread::WaitForStop()
     const char * lastSlash = tmpFileName.FindLast( NATIVE_SLASH );
     tmpFileName.SetLength( (uint32_t)( lastSlash - tmpFileName.Get() ) );
     FileIO::EnsurePathExists( tmpFileName );
+}
+
+// Returns true if using more than 90% percent of system memory.
+//------------------------------------------------------------------------------
+/*static*/ bool WorkerThread::IsSystemMemoryStressed()
+{
+    static volatile int64_t s_lastSystemMemoryStressedTime = -1;
+
+    size_t free, total;
+    GetSystemMemorySize( &free, &total );
+
+    if ( total > 0 )
+    {
+        const FBuild& build = FBuild::Get();
+        const FBuildOptions& options = build.GetOptions();
+
+        const uint32_t minPercentMemoryAvailable = options.m_MinPercentMemoryAvailable;
+        if ( ( free * 100 ) < ( total * minPercentMemoryAvailable ) )
+        {
+            MutexHolder lock( WorkerThread::s_TmpRootMutex );
+
+            const int64_t elapsedTime = build.GetTimer().GetElapsedCycleCount();
+
+            if ( AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime ) < 0 )
+            {
+                AtomicStoreRelaxed( &s_lastSystemMemoryStressedTime , elapsedTime );
+            }
+
+            FLOG_WARN( "FBuild after %.1f s : available system memory under %d%% ( %u / %u mb available, %.2f%% used )",
+                static_cast<float>(elapsedTime) * Timer::GetFrequencyInvFloat(),
+                minPercentMemoryAvailable,
+                uint32_t( free >> 20 ),
+                uint32_t( total >> 20 ),
+                static_cast<float>(total - free) * 100.0f / static_cast<float>(total) );
+
+            return true;
+        }
+        else if ( AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime ) >= 0 )
+        {
+            MutexHolder lock( WorkerThread::s_TmpRootMutex );
+
+            const int64_t lastSystemMemoryStressedTime = AtomicLoadRelaxed( &s_lastSystemMemoryStressedTime );
+            if ( lastSystemMemoryStressedTime >= 0 )
+            {
+                const int64_t elaspedTime = build.GetTimer().GetElapsedCycleCount();
+                const int64_t stressedTime = elaspedTime - lastSystemMemoryStressedTime;
+                const int64_t newTotalTime = AddTimeWithSystemMemoryStressed( stressedTime );
+
+                FLOG_WARN( "FBuild after %.1f s : waiting worker threads detected available system memory under %d%% for %.1f seconds ( %.1f in total since build start )",
+                    static_cast<float>(elaspedTime) * Timer::GetFrequencyInvFloat(),
+                    minPercentMemoryAvailable,
+                    static_cast<float>(stressedTime) * Timer::GetFrequencyInvFloat(),
+                    static_cast<float>(newTotalTime) * Timer::GetFrequencyInvFloat() );
+
+                AtomicStoreRelaxed( &s_lastSystemMemoryStressedTime, -1 );
+            }
+        }
+    }
+
+    return false;
+}
+
+// Returns the static volatile variable storing the Total Time With System Memory Stressed
+//------------------------------------------------------------------------------
+/*static*/ volatile int64_t * WorkerThread::GetTotalTimeWithSystemMemoryStressedInternal()
+{
+    static volatile int64_t s_totalSystemMemoryStressedTimeInCycle = 0;
+
+    return &s_totalSystemMemoryStressedTimeInCycle;
+}
+
+//------------------------------------------------------------------------------
+/*static*/  int64_t WorkerThread::GetTotalTimeWithSystemMemoryStressed()
+{
+    return AtomicLoadRelaxed( GetTotalTimeWithSystemMemoryStressedInternal() );
+}
+
+//------------------------------------------------------------------------------
+/*static*/  int64_t WorkerThread::AddTimeWithSystemMemoryStressed( const int64_t additionalTimeWithSystemMemoryStressed )
+{
+    const int64_t newTotalTimeWithSystemMemoryStressed = GetTotalTimeWithSystemMemoryStressed() + additionalTimeWithSystemMemoryStressed;
+    AtomicStoreRelaxed( GetTotalTimeWithSystemMemoryStressedInternal(), newTotalTimeWithSystemMemoryStressed );
+
+    return newTotalTimeWithSystemMemoryStressed;
 }
 
 //------------------------------------------------------------------------------

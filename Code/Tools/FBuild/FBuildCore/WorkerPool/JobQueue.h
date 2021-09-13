@@ -44,7 +44,7 @@ private:
 class JobQueue : public Singleton< JobQueue >
 {
 public:
-    explicit JobQueue( uint32_t numWorkerThreads );
+    explicit JobQueue( uint32_t numWorkerThreads , uint32_t numWorkerThreadsToBuildSecondPass );
     ~JobQueue();
 
     // main thread calls these

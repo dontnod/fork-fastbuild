@@ -29,6 +29,11 @@ public:
         return ( (float)( now - m_StartTime ) * GetFrequencyInvFloatMS() );
     }
 
+    int64_t GetElapsedCycleCount() const
+    {
+        return GetNow() - m_StartTime;
+    }
+
     static int64_t GetNow();
     static inline int64_t GetFrequency() { return s_Frequency; }
     static inline float GetFrequencyInvFloat() { return s_FrequencyInvFloat; }
