@@ -92,6 +92,8 @@ public:
     inline void                 SetDistributionState( DistributionState state ) { m_DistributionState = state; }
     inline DistributionState    GetDistributionState() const                    { return m_DistributionState; }
 
+    void SetSpawnCompilerWithDebugger() { m_SpawnCompilerWithDebugger = true; }
+    bool ShouldSpawnCompilerWithDebugger() { return m_SpawnCompilerWithDebugger; }
     void SetTryPostponeLocalBuildToSecondPass( bool postponeBuildToSecondPass ) { m_TryPostponeBuildToSecondPass = postponeBuildToSecondPass; }
     bool ShouldTryPostponeLocalBuildToSecondPass() const { return m_TryPostponeBuildToSecondPass; }
 
@@ -110,6 +112,7 @@ private:
     volatile bool       m_Abort             = false;
     bool                m_DataIsCompressed  = false;
     bool                m_IsLocal           = true;
+    bool                m_SpawnCompilerWithDebugger = false;
     bool                m_TryPostponeBuildToSecondPass = false;
     uint8_t             m_SystemErrorCount  = 0; // On client, the total error count, on the worker a flag for the current attempt
     DistributionState   m_DistributionState = DIST_NONE;

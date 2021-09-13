@@ -2238,9 +2238,26 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
         environmentString = compilerNode->GetEnvironmentString();
     }
 
+    AString CompilerExecutable;
+    AString CompilerArgs;
+
+#if defined( __WINDOWS__ )
+    if ( job->ShouldSpawnCompilerWithDebugger() )
+    {
+        CompilerExecutable.Assign( "C:\\Windows\\System32\\vsjitdebugger.exe" );
+        CompilerArgs.Format( "\"%s\" ", compiler.Get() );
+    }
+    else
+#endif
+    {
+        CompilerExecutable.Assign( compiler.Get() );
+    }
+
+    CompilerArgs.Append( fullArgs.GetFinalArgs() );
+
     // spawn the process
-    if ( false == m_Process.Spawn( compiler.Get(),
-                                   fullArgs.GetFinalArgs().Get(),
+    if ( false == m_Process.Spawn( CompilerExecutable.Get(),
+                                   CompilerArgs.Get(),
                                    workingDir,
                                    environmentString ) )
     {

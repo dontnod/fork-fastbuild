@@ -147,6 +147,11 @@ bool FBuildWorkerOptions::ProcessCommandLine( const AString & commandLine )
                 Env::ShowMsgBox( "FBuildWorker", "Please attach debugger and press ok\n\n(-debug command line used)" );
                 continue;
             }
+            else if ( token == "-spawncompilerwithdebugger" )
+            {
+                //NOTE: arg will be processed in Worker constructor
+                continue;
+            }
         #endif
 
         ShowUsageError();
