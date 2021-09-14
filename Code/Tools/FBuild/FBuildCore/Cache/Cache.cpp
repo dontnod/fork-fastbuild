@@ -52,6 +52,7 @@ public:
 //------------------------------------------------------------------------------
 /*virtual*/ bool Cache::Init( const AString & cachePath,
                               const AString & cachePathMountPoint,
+                              const AString & localMirrorPath,
                               bool /*cacheRead*/,
                               bool /*cacheWrite*/,
                               bool /*cacheVerbose*/,
@@ -61,6 +62,23 @@ public:
 
     m_CachePath = cachePath;
     PathUtils::EnsureTrailingSlash( m_CachePath );
+
+    m_LocalMirrorPath = localMirrorPath;
+
+    // Check local mirror availability
+    if ( m_LocalMirrorPath.IsEmpty() == false )
+    {
+        if ( FileIO::EnsurePathExists( m_LocalMirrorPath ) )
+        {
+            PathUtils::EnsureTrailingSlash( m_LocalMirrorPath );
+        }
+        else
+        {
+            FLOG_WARN( "Local mirror caching disabled because '%s' is not accessible", m_LocalMirrorPath.Get() );
+
+            m_LocalMirrorPath.Clear();
+        }
+    }
 
     // Check cache mount point if option is enabled
     #if defined( __WINDOWS__ )
@@ -94,11 +112,8 @@ public:
 
 // Publish
 //------------------------------------------------------------------------------
-/*virtual*/ bool Cache::Publish( const AString & cacheId, const void * data, size_t dataSize )
+bool Cache::PublishFullPath( const AString & fullPath, const void * data, size_t dataSize ) const
 {
-    AStackString<> fullPath;
-    GetFullPathForCacheEntry( cacheId, fullPath );
-
     // make sure the cache output path exists
     if ( !FileIO::EnsurePathExistsForFile( fullPath ) )
     {
@@ -143,6 +158,16 @@ public:
     return true;
 }
 
+// Publish
+//------------------------------------------------------------------------------
+/*virtual*/ bool Cache::Publish( const AString & cacheId, const void * data, size_t dataSize )
+{
+    AStackString<> fullPath;
+    GetFullPathForCacheEntry( cacheId, fullPath );
+
+    return PublishFullPath( fullPath, data, dataSize );
+}
+
 // Retrieve
 //------------------------------------------------------------------------------
 /*virtual*/ bool Cache::Retrieve( const AString & cacheId, void * & data, size_t & dataSize )
@@ -150,20 +175,45 @@ public:
     data = nullptr;
     dataSize = 0;
 
-    AStackString<> fullPath;
-    GetFullPathForCacheEntry( cacheId, fullPath );
-
-    FileStream cacheFile;
-    if ( cacheFile.Open( fullPath.Get(), FileStream::READ_ONLY ) )
-    {
-        const size_t cacheFileSize = (size_t)cacheFile.GetFileSize();
-        UniquePtr< char > mem( (char *)ALLOC( cacheFileSize ) );
-        if ( cacheFile.Read( mem.Get(), cacheFileSize ) == cacheFileSize )
+    auto readCachedData = [&]( const AString & fullPath ) {
+        FileStream cacheFile;
+        if ( cacheFile.Open( fullPath.Get(), FileStream::READ_ONLY ) )
         {
-            dataSize = cacheFileSize;
-            data = mem.Release();
+            const size_t cacheFileSize = (size_t)cacheFile.GetFileSize();
+            UniquePtr< char > mem( (char *)ALLOC( cacheFileSize ) );
+            if ( cacheFile.Read( mem.Get(), cacheFileSize ) == cacheFileSize )
+            {
+                dataSize = cacheFileSize;
+                data = mem.Release();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    AStackString<> fullPath;
+
+    if ( m_LocalMirrorPath.IsEmpty() == false )
+    {
+        GetFullPathForMirrorEntry( cacheId, fullPath );
+
+        if ( readCachedData( fullPath ) )
+        {
             return true;
         }
+    }
+
+    GetFullPathForCacheEntry( cacheId, fullPath );
+
+    if ( readCachedData( fullPath ) )
+    {
+        if ( m_LocalMirrorPath.IsEmpty() == false )
+        {
+            GetFullPathForMirrorEntry( cacheId, fullPath );
+            PublishFullPath( fullPath, data, dataSize );
+        }
+        return true;
     }
 
     return false;
@@ -372,6 +422,22 @@ void Cache::GetFullPathForCacheEntry( const AString & cacheId,
 {
     // format example: N:\\fbuild.cache\\AA\\BB\\<ABCD.......>
     outFullPath.Format( "%s%c%c%c%c%c%c%s", m_CachePath.Get(),
+                                            cacheId[ 0 ],
+                                            cacheId[ 1 ],
+                                            NATIVE_SLASH,
+                                            cacheId[ 2 ],
+                                            cacheId[ 3 ],
+                                            NATIVE_SLASH,
+                                            cacheId.Get() );
+}
+
+// GetFullPathForCacheEntry
+//------------------------------------------------------------------------------
+void Cache::GetFullPathForMirrorEntry( const AString & cacheId,
+                                      AString & outFullPath ) const
+{
+    // format example: N:\\fbuild.cache\\AA\\BB\\<ABCD.......>
+    outFullPath.Format( "%s%c%c%c%c%c%c%s", m_LocalMirrorPath.Get(),
                                             cacheId[ 0 ],
                                             cacheId[ 1 ],
                                             NATIVE_SLASH,

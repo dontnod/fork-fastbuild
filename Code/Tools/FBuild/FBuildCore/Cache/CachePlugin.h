@@ -21,6 +21,7 @@ public:
 
     virtual bool Init( const AString & cachePath,
                        const AString & cachePathMountPoint,
+                       const AString & localMirrorPath,
                        bool cacheRead,
                        bool cacheWrite,
                        bool cacheVerbose,

@@ -29,6 +29,7 @@ public:
     const AString &                     GetCachePathMountPoint() const;
     const AString &                     GetCachePluginDLL() const;
     const AString &                     GetCachePluginDLLConfig() const;
+    const AString &                     GetLocalMirrorPath() const;
     inline const Array< AString > &     GetWorkerList() const { return m_Workers; }
     uint32_t                            GetWorkerConnectionLimit() const { return m_WorkerConnectionLimit; }
     uint32_t                            GetDistributableJobMemoryLimitMiB() const { return m_DistributableJobMemoryLimitMiB; }
@@ -49,6 +50,7 @@ private:
     AString             m_CachePathMountPoint;
     AString             m_CachePluginDLL;
     AString             m_CachePluginDLLConfig;
+    AString             m_LocalMirrorPath;
     Array< AString  >   m_Workers;
     uint32_t            m_WorkerConnectionLimit;
     uint32_t            m_DistributableJobMemoryLimitMiB;

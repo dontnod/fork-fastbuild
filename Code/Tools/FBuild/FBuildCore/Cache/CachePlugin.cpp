@@ -136,6 +136,7 @@ void * CachePlugin::GetFunction( const char * name, const char * mangledName, bo
 //------------------------------------------------------------------------------
 /*virtual*/ bool CachePlugin::Init( const AString & cachePath,
                                     const AString & /*cachePathMountPoint*/,
+                                    const AString & /*localMirrorPath*/,
                                     bool cacheRead,
                                     bool cacheWrite,
                                     bool cacheVerbose,
